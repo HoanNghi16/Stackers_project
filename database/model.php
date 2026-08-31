@@ -1,16 +1,26 @@
 <?php
 
-abstract class Model
+class BaseModel
 {
     protected mysqli $conn;
     protected string $tableName;
     protected string $primaryKey;
+    protected array $fields;
 
-    public function __construct($conn, $tableName, $primaryKey = 'id')
+
+    /**
+     * Fields có dạng:
+     * "field_name" => "type" hoặc "tableName-keyName"
+     * ví dụ:
+     * [ 
+     *   "id" =>"string",
+     *   "ward_id" => "wards-id" (ward_id là khóa ngoại trỏ tới bảng wards cột id)
+     * ]
+     */
+
+    public function __construct($conn)
     {
         $this->conn = $conn;
-        $this->tableName = $tableName;
-        $this->primaryKey = $primaryKey;
     }
 
     /**
@@ -28,6 +38,7 @@ abstract class Model
 
         return $result->fetch_all(MYSQLI_ASSOC);
     }
+
 
     /**
      * Tìm record theo primary key
@@ -213,5 +224,6 @@ abstract class Model
             default => 's'
         };
     }
+
 }
 
