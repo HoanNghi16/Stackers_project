@@ -12,7 +12,6 @@
     }
 
     $conn->set_charset("utf8mb4");
-
     // Kiểm tra database có tồn tại chưa
     $db_check = $conn->query(
         "SELECT SCHEMA_NAME 
