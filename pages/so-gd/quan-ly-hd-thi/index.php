@@ -1,437 +1,352 @@
 <?php
-
+// Trang demo quản lý và phân công các Hội đồng thi.
 ?>
 
 <!DOCTYPE html>
-
-<html lang="en">
-
+<html lang="vi">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stackers - Quản lý Hội đồng thi</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+</script>
 
-<title>Stackers - Quản lý HĐ thi</title>
-
-<script src="https://cdn.tailwindcss.com"></script>
-
+<style>
+.assignment-row {
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) auto auto;
+    gap: 16px;
+    align-items: center;
+    padding: 12px 14px;
+    border-bottom: 1px solid #e5e7eb;
+}
+.teacher-info {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.teacher-name { font-weight: 600; }
+.teacher-meta { font-size: 12px; color: #6b7280; }
+.role-option {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    white-space: nowrap;
+    cursor: pointer;
+}
+.role-panel {
+    margin-top: 18px;
+}
+.muted {
+    color: #6b7280;
+    font-size: 14px;
+}
+@media (max-width: 720px) {
+    .assignment-row {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+}
+</style>
 </head>
 
-<body>
+<body class="bg-gray-50 text-gray-800">
+<div class="max-w-6xl mx-auto p-8">
 
-<div class="flex-1 p-8">
+    <!-- =====================================================
+         STEP 1: CHỌN LOẠI HỘI ĐỒNG
+         Theo Basic Flow: bước 1 -> 2 -> 3
+    ====================================================== -->
+    <div id="step-council-type">
+        <h1 class="text-center font-bold text-2xl mb-2">
+            Quản lý các Hội đồng thi
+        </h1>
 
-<!-- =====================================================
-     STEP 1: CHỌN LOẠI HỘI ĐỒNG
-====================================================== -->
+        <p class="text-center text-gray-500 mb-8">
+            Chọn loại Hội đồng thi cần phân công
+        </p>
 
-<div id="step-council-type">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <button type="button"
+                    onclick="selectCouncilType('examiner')"
+                    class="border bg-white rounded-xl p-6 text-left hover:shadow-md transition">
+                <div class="font-bold text-lg">Ra đề</div>
+                <div class="text-sm text-gray-500 mt-1">
+                    Phân công giáo viên theo môn thi
+                </div>
+            </button>
 
-    <h2 class="text-center font-bold text-xl mb-6">
-        Vui lòng chọn loại hội đồng thi
-    </h2>
+            <button type="button"
+                    onclick="selectCouncilType('proctor')"
+                    class="border bg-white rounded-xl p-6 text-left hover:shadow-md transition">
+                <div class="font-bold text-lg">Gác thi</div>
+                <div class="text-sm text-gray-500 mt-1">
+                    Phân công giáo viên tại các điểm thi
+                </div>
+            </button>
 
-    <div class="flex gap-2 justify-center">
+            <button type="button"
+                    onclick="selectCouncilType('grader')"
+                    class="border bg-white rounded-xl p-6 text-left hover:shadow-md transition">
+                <div class="font-bold text-lg">Chấm thi</div>
+                <div class="text-sm text-gray-500 mt-1">
+                    Phân công giáo viên theo môn thi
+                </div>
+            </button>
 
-        <label class="border rounded-lg p-4 cursor-pointer">
-            <input
-                type="radio"
-                name="council-cate"
-                value="examiner"
-                onchange="selectCouncilType('examiner')"
-            >
-
-            Ra đề
-        </label>
-
-        <label class="border rounded-lg p-4 cursor-pointer">
-            <input
-                type="radio"
-                name="council-cate"
-                value="proctor"
-                onchange="selectCouncilType('proctor')"
-            >
-
-            Gác thi
-        </label>
-
-        <label class="border rounded-lg p-4 cursor-pointer">
-            <input
-                type="radio"
-                name="council-cate"
-                value="grader"
-                onchange="selectCouncilType('grader')"
-            >
-
-            Chấm thi
-        </label>
-
-        <label class="border rounded-lg p-4 cursor-pointer">
-            <input
-                type="radio"
-                name="council-cate"
-                value="reviewer"
-                onchange="selectCouncilType('reviewer')"
-            >
-
-            Phúc khảo
-        </label>
-
+            <button type="button"
+                    onclick="selectCouncilType('reviewer')"
+                    class="border bg-white rounded-xl p-6 text-left hover:shadow-md transition">
+                <div class="font-bold text-lg">Phúc khảo</div>
+                <div class="text-sm text-gray-500 mt-1">
+                    Phân công giáo viên theo môn thi
+                </div>
+            </button>
+        </div>
     </div>
 
-</div>
 
+    <!-- =====================================================
+         STEP 2A: CHỌN MÔN THI
+         Dùng cho:
+         - Ra đề
+         - Chấm thi
+         - Phúc khảo
 
-<!-- =====================================================
-     STEP 2A: CHỌN MÔN THI
-     Dùng cho:
-     - Ra đề
-     - Chấm thi
-     - Phúc khảo
-====================================================== -->
-
-<div id="step-subject" class="hidden">
-
-    <div class="flex justify-between items-center mb-6">
-
-        <h2 class="font-bold text-xl">
-            Chọn môn thi
-        </h2>
-
-        <button
-            type="button"
-            onclick="goBackToCouncilType()"
-            class="border px-4 py-2 rounded"
-        >
-            Quay lại
-        </button>
-
-    </div>
-
-    <div class="border rounded-lg p-4">
-
-        <label class="block mb-2">
-            Môn thi
-        </label>
-
-        <select
-            id="subject-select"
-            class="border rounded p-2 w-full"
-            onchange="selectSubject()"
-        >
-
-            <option value="">
-                -- Chọn môn thi --
-            </option>
-
-            <option value="math">
-                Toán
-            </option>
-
-            <option value="literature">
-                Ngữ Văn
-            </option>
-
-            <option value="english">
-                Tiếng Anh
-            </option>
-
-        </select>
-
-    </div>
-
-</div>
-
-
-<!-- =====================================================
-     STEP 2B: CHỌN GIÁO VIÊN + TRƯỞNG HỘI ĐỒNG
-
-     Dùng cho:
-     - Ra đề
-     - Chấm thi
-     - Phúc khảo
-====================================================== -->
-
-<div id="step-teachers" class="hidden mt-8">
-
-    <div class="flex justify-between items-center mb-6">
-
-        <div>
-
-            <h2 class="font-bold text-xl">
-                Phân công hội đồng
-            </h2>
-
-            <div class="mt-2">
-                Môn:
-                <span
-                    id="selected-subject"
-                    class="border rounded px-3 py-1"
-                >
-                </span>
+         Theo Alternative Flow 4.1
+    ====================================================== -->
+    <div id="step-subject" class="hidden">
+        <div class="flex justify-between items-center mb-6">
+            <div>
+                <h2 class="font-bold text-xl">Chọn môn thi</h2>
+                <p class="text-sm text-gray-500 mt-1">
+                    Giáo viên phải thuộc môn thi và có tên trong danh sách đề cử từ các trường.
+                </p>
             </div>
 
+            <button type="button"
+                    onclick="goBackToCouncilType()"
+                    class="border bg-white px-4 py-2 rounded-lg hover:bg-gray-100">
+                Quay lại
+            </button>
         </div>
 
-        <button
-            type="button"
-            onclick="goBackToSubject()"
-            class="border px-4 py-2 rounded"
-        >
-            Quay lại
-        </button>
+        <div class="border bg-white rounded-xl p-5">
+            <label for="subject-select" class="block font-medium mb-2">
+                Môn thi
+            </label>
 
+            <select id="subject-select"
+                    class="border rounded-lg p-3 w-full"
+                    onchange="selectSubject()">
+                <option value="">-- Chọn môn thi --</option>
+                <option value="math">Toán</option>
+                <option value="literature">Ngữ Văn</option>
+                <option value="english">Tiếng Anh</option>
+            </select>
+        </div>
     </div>
 
 
-    <!-- DANH SÁCH GIÁO VIÊN -->
+    <!-- =====================================================
+         STEP 2B: PHÂN CÔNG HỘI ĐỒNG THEO MÔN
+         Theo Alternative Flow:
+         1. Chọn môn
+         2. Hiển thị GV hợp lệ
+         3. Chọn GV
+         4. Chọn trưởng HĐ
+         5. Chọn GV dự phòng
+         6. Lưu
+    ====================================================== -->
+    <div id="step-teachers" class="hidden mt-8">
+        <div class="flex justify-between items-center mb-6">
+            <div>
+                <h2 class="font-bold text-xl">Phân công Hội đồng thi</h2>
 
-    <div class="border rounded-lg">
-
-        <div class="p-4 border-b font-bold">
-            Danh sách giáo viên
-        </div>
-
-        <div
-            id="teacher-list"
-            class="p-4"
-        >
-            <!-- Javascript render -->
-        </div>
-
-    </div>
-
-
-    <!-- TRƯỞNG HỘI ĐỒNG -->
-
-    <div class="border rounded-lg mt-6">
-
-        <div class="p-4 border-b font-bold">
-            Chọn trưởng hội đồng
-        </div>
-
-        <div
-            id="leader-list"
-            class="p-4"
-        >
-
-            <p>
-                Vui lòng chọn giáo viên tham gia hội đồng trước.
-            </p>
-
-        </div>
-
-    </div>
-
-
-    <div class="mt-4 flex justify-end">
-
-        <button
-            type="button"
-            onclick="createSubjectCouncil()"
-            class="border rounded px-6 py-3"
-        >
-            Tạo hội đồng
-        </button>
-
-    </div>
-
-</div>
-
-
-<!-- =====================================================
-     STEP 2C: GÁC THI
-
-     - Chọn điểm thi
-     - Chọn nhiều giáo viên
-     - Có thể đánh dấu dự phòng
-     - Sau đó thêm vào điểm thi
-====================================================== -->
-
-<div id="step-proctor" class="hidden">
-
-    <div class="flex justify-between items-center mb-6">
-
-        <h2 class="font-bold text-xl">
-            Phân công gác thi
-        </h2>
-
-        <button
-            type="button"
-            onclick="goBackToCouncilType()"
-            class="border px-4 py-2 rounded"
-        >
-            Quay lại
-        </button>
-
-    </div>
-
-
-    <div class="grid grid-cols-2 gap-8">
-
-        <!-- =================================================
-             DANH SÁCH ĐIỂM THI
-        ================================================== -->
-
-        <div class="border rounded-lg">
-
-            <div class="p-4 border-b font-bold">
-                Danh sách điểm thi
+                <div class="mt-2 text-sm">
+                    Môn:
+                    <span id="selected-subject"
+                          class="inline-block border rounded px-3 py-1 bg-white font-medium">
+                    </span>
+                </div>
             </div>
 
-            <div class="p-4">
-
-                <label class="block mb-2">
-                    Chọn điểm thi
-                </label>
-
-                <select
-                    id="location-select"
-                    class="border rounded p-2 w-full"
-                    onchange="renderSelectedLocationAssignments()"
-                >
-
-                    <option value="">
-                        -- Chọn điểm thi --
-                    </option>
-
-                    <option value="school-a">
-                        Trường THPT A
-                    </option>
-
-                    <option value="school-b">
-                        Trường THPT B
-                    </option>
-
-                    <option value="school-c">
-                        Trường THPT C
-                    </option>
-
-                    <option value="school-d">
-                        Trường THPT D
-                    </option>
-
-                </select>
-
-            </div>
-
+            <button type="button"
+                    onclick="goBackToSubject()"
+                    class="border bg-white px-4 py-2 rounded-lg hover:bg-gray-100">
+                Quay lại
+            </button>
         </div>
 
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-        <!-- =================================================
-             DANH SÁCH GIÁO VIÊN
-        ================================================== -->
-
-        <div class="border rounded-lg">
-
-            <div class="p-4 border-b font-bold">
-                Danh sách giáo viên
-            </div>
-
-            <div class="p-4">
-
-                <div class="mb-4">
-                    Chọn giáo viên tham gia gác thi
+            <!-- Giáo viên hợp lệ -->
+            <div class="border bg-white rounded-xl">
+                <div class="p-4 border-b">
+                    <div class="font-bold">Danh sách giáo viên hợp lệ</div>
+                    <div class="text-sm text-gray-500 mt-1">
+                        Giáo viên thuộc môn đã chọn và có tên trong danh sách đề cử.
+                    </div>
                 </div>
 
-                <div
-                    id="proctor-teacher-list"
-                    class="space-y-4"
-                >
-
+                <div id="teacher-list" class="p-4 space-y-3">
                     <!-- Javascript render -->
-
                 </div>
-
             </div>
 
+            <!-- Trưởng hội đồng & Giáo viên dự phòng -->
+            <div class="border bg-white rounded-xl">
+                <div class="p-4 border-b">
+                    <div class="font-bold">Chọn trưởng Hội đồng &amp; giáo viên dự phòng</div>
+                    <div class="text-sm text-gray-500 mt-1">
+                        Chỉ giáo viên đã được chọn tham gia mới hiện ở đây. Mỗi giáo viên chỉ được chọn một vai trò.
+                    </div>
+                </div>
+
+                <div id="subject-assignment-list" class="p-4">
+                    <p class="text-gray-500">
+                        Vui lòng chọn giáo viên tham gia hội đồng trước.
+                    </p>
+                </div>
+            </div>
         </div>
 
+        <div class="mt-6 flex justify-end">
+            <button type="button"
+                    onclick="createSubjectCouncil()"
+                    class="bg-gray-900 text-white rounded-lg px-6 py-3 hover:bg-gray-800">
+                Lưu danh sách
+            </button>
+        </div>
     </div>
 
 
-    <!-- =================================================
-         THÊM GIÁO VIÊN VÀO ĐIỂM THI
-    ================================================== -->
+    <!-- =====================================================
+         STEP 2C: GÁC THI
+         Theo Basic Flow:
+         4. Hiển thị điểm thi + GV chưa phân công
+         5. Chọn điểm thi
+         6. Chọn nhiều GV
+         7. Thêm GV vào điểm thi
+         8. Chọn trưởng HĐ
+         9. Chọn GV dự phòng
+         10. Lưu
+    ====================================================== -->
+    <div id="step-proctor" class="hidden">
+        <div class="flex justify-between items-center mb-6">
+            <div>
+                <h2 class="font-bold text-xl">Phân công Hội đồng Gác thi</h2>
+                <p class="text-sm text-gray-500 mt-1">
+                    Chọn điểm thi và phân công giáo viên chưa được phân công.
+                </p>
+            </div>
 
-    <div class="mt-6 flex justify-center">
-
-        <button
-            type="button"
-            onclick="addTeachersToLocation()"
-            class="border rounded px-6 py-3"
-        >
-            Thêm giáo viên vào trường đã chọn
-        </button>
-
-    </div>
-
-
-    <!-- =================================================
-         PHÂN CÔNG HIỆN TẠI
-    ================================================== -->
-
-    <div class="mt-8 border rounded-lg">
-
-        <div class="p-4 border-b font-bold">
-            Phân công hiện tại
+            <button type="button"
+                    onclick="goBackToCouncilType()"
+                    class="border bg-white px-4 py-2 rounded-lg hover:bg-gray-100">
+                Quay lại
+            </button>
         </div>
 
-        <div
-            id="assignment-list"
-            class="p-4"
-        >
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-            <p id="empty-assignment">
-                Chưa có phân công nào.
-            </p>
+            <!-- Điểm thi -->
+            <div class="border bg-white rounded-xl">
+                <div class="p-4 border-b font-bold">
+                    Danh sách điểm thi
+                </div>
 
+                <div class="p-4">
+                    <label for="location-select" class="block font-medium mb-2">
+                        Chọn điểm thi
+                    </label>
+
+                    <select id="location-select"
+                            class="border rounded-lg p-3 w-full"
+                            onchange="renderSelectedLocationAssignments()">
+                        <option value="">-- Chọn điểm thi --</option>
+                        <option value="school-a">Trường THPT A</option>
+                        <option value="school-b">Trường THPT B</option>
+                        <option value="school-c">Trường THPT C</option>
+                        <option value="school-d">Trường THPT D</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- GV chưa phân công -->
+            <div class="border bg-white rounded-xl">
+                <div class="p-4 border-b">
+                    <div class="font-bold">Danh sách giáo viên chưa phân công</div>
+                    <div class="text-sm text-gray-500 mt-1">
+                        Chọn nhiều giáo viên để thêm vào điểm thi.
+                    </div>
+                </div>
+
+                <div id="proctor-teacher-list" class="p-4 space-y-3">
+                    <!-- Javascript render -->
+                </div>
+            </div>
         </div>
 
-    </div>
-
-
-    <!-- =================================================
-         TRƯỞNG HỘI ĐỒNG
-    ================================================== -->
-
-    <div class="mt-6 border rounded-lg">
-
-        <div class="p-4 border-b font-bold">
-            Chọn trưởng hội đồng
+        <div class="mt-6 flex justify-center">
+            <button type="button"
+                    onclick="addTeachersToLocation()"
+                    class="border bg-white rounded-lg px-6 py-3 hover:bg-gray-100">
+                Thêm giáo viên vào điểm thi
+            </button>
         </div>
 
-        <div
-            id="proctor-leader-list"
-            class="p-4"
-        >
+        <!-- Phân công hiện tại -->
+        <div class="mt-8 border bg-white rounded-xl">
+            <div class="p-4 border-b font-bold">
+                Phân công hiện tại
+            </div>
 
-            <p>
-                Vui lòng phân công giáo viên trước.
-            </p>
-
+            <div id="assignment-list" class="p-4">
+                <p class="text-gray-500">
+                    Chưa có phân công nào.
+                </p>
+            </div>
         </div>
 
-    </div>
+        <!-- Trưởng hội đồng & Giáo viên dự phòng -->
+        <div class="mt-6 border bg-white rounded-xl">
+            <div class="p-4 border-b">
+                <div class="font-bold">Chọn trưởng Hội đồng &amp; giáo viên dự phòng</div>
+                <div class="text-sm text-gray-500 mt-1">
+                    Chỉ giáo viên đã được phân công mới hiện ở đây. Mỗi giáo viên chỉ được chọn một vai trò.
+                </div>
+            </div>
 
+            <div id="proctor-role-list" class="p-4">
+                <p class="text-gray-500">
+                    Vui lòng phân công giáo viên trước.
+                </p>
+            </div>
+        </div>
 
-    <div class="mt-4 flex justify-end">
-
-        <button
-            type="button"
-            onclick="createProctorCouncil()"
-            class="border rounded px-6 py-3"
-        >
-            Tạo hội đồng
-        </button>
-
+        <div class="mt-6 flex justify-end">
+            <button type="button"
+                    onclick="createProctorCouncil()"
+                    class="bg-gray-900 text-white rounded-lg px-6 py-3 hover:bg-gray-800">
+                Lưu danh sách
+            </button>
+        </div>
     </div>
 
 </div>
 
-</div>
 
 <script>
-
     /*
      * =========================================================
      * DATA DEMO
@@ -441,99 +356,56 @@
     let councilType = null;
 
     const subjects = {
-
         math: "Toán",
-
         literature: "Ngữ Văn",
-
-        english: "Tiếng Anh",
-
-        programming: "Lập trình"
-
+        english: "Tiếng Anh"
     };
-
-
-    const teachers = {
-
-        math: [
-            {
-                id: 1,
-                name: "Nguyễn Văn A"
-            },
-            {
-                id: 2,
-                name: "Nguyễn Thị B"
-            },
-            {
-                id: 3,
-                name: "Trần Văn C"
-            },
-            {
-                id: 4,
-                name: "Lê Văn D"
-            }
-        ],
-
-        literature: [
-            {
-                id: 5,
-                name: "Lê Thị D"
-            },
-            {
-                id: 6,
-                name: "Phạm Văn E"
-            },
-            {
-                id: 7,
-                name: "Hoàng Thị F"
-            }
-        ],
-
-        english: [
-            {
-                id: 8,
-                name: "Nguyễn Văn G"
-            },
-            {
-                id: 9,
-                name: "Trần Thị H"
-            },
-            {
-                id: 10,
-                name: "Lê Văn I"
-            }
-        ],
-
-        programming: [
-            {
-                id: 11,
-                name: "Phạm Văn K"
-            },
-            {
-                id: 12,
-                name: "Nguyễn Văn L"
-            },
-            {
-                id: 13,
-                name: "Trần Thị M"
-            }
-        ]
-
-    };
-
 
     /*
-     * Giáo viên đã được phân công vào các điểm thi
+     * Danh sách giáo viên được đề cử từ các trường.
+     * Trong hệ thống thật, dữ liệu này sẽ lấy từ database/API.
+     */
+    const teachers = {
+        math: [
+            { id: 1, name: "Nguyễn Văn A", nominated: true },
+            { id: 2, name: "Nguyễn Thị B", nominated: true },
+            { id: 3, name: "Trần Văn C", nominated: true },
+            { id: 4, name: "Lê Văn D", nominated: true }
+        ],
+        literature: [
+            { id: 5, name: "Lê Thị D", nominated: true },
+            { id: 6, name: "Phạm Văn E", nominated: true },
+            { id: 7, name: "Hoàng Thị F", nominated: true }
+        ],
+        english: [
+            { id: 8, name: "Nguyễn Văn G", nominated: true },
+            { id: 9, name: "Trần Thị H", nominated: true },
+            { id: 10, name: "Lê Văn I", nominated: true }
+        ]
+    };
+
+    /*
+     * Giáo viên dùng cho Hội đồng Gác thi.
+     * Đây là danh sách GV chưa được phân công trong demo.
+     */
+    const proctorTeachers = [
+        { id: 1, name: "Nguyễn Văn A", nominated: true },
+        { id: 2, name: "Nguyễn Thị B", nominated: true },
+        { id: 3, name: "Trần Văn C", nominated: true },
+        { id: 4, name: "Trần Thị D", nominated: true },
+        { id: 5, name: "Lê Văn E", nominated: true }
+    ];
+
+    /*
+     * Giáo viên đã được phân công vào các điểm thi.
      *
      * {
-     *     locationId,
-     *     locationName,
-     *     teacherId,
-     *     teacherName,
-     *     isBackup
+     *   locationId,
+     *   locationName,
+     *   teacherId,
+     *   teacherName
      * }
      */
-
     let proctorAssignments = [];
 
 
@@ -542,39 +414,25 @@
      * CHỌN LOẠI HỘI ĐỒNG
      * =========================================================
      */
-
     function selectCouncilType(type) {
-
         councilType = type;
 
         hideAllSteps();
 
-
-        /*
-         * Gác thi có flow riêng
-         */
-
         if (type === "proctor") {
-
-            document
-                .getElementById("step-proctor")
+            document.getElementById("step-proctor")
                 .classList.remove("hidden");
 
             renderProctorTeachers();
+            renderSelectedLocationAssignments();
+            renderProctorRoles();
 
             return;
         }
 
-
-        /*
-         * Ra đề / Chấm thi / Phúc khảo
-         * đều phải chọn môn.
-         */
-
-        document
-            .getElementById("step-subject")
+        // Ra đề / Chấm thi / Phúc khảo phải chọn môn.
+        document.getElementById("step-subject")
             .classList.remove("hidden");
-
     }
 
 
@@ -583,25 +441,18 @@
      * ẨN TẤT CẢ STEP
      * =========================================================
      */
-
     function hideAllSteps() {
-
-        document
-            .getElementById("step-council-type")
+        document.getElementById("step-council-type")
             .classList.add("hidden");
 
-        document
-            .getElementById("step-subject")
+        document.getElementById("step-subject")
             .classList.add("hidden");
 
-        document
-            .getElementById("step-teachers")
+        document.getElementById("step-teachers")
             .classList.add("hidden");
 
-        document
-            .getElementById("step-proctor")
+        document.getElementById("step-proctor")
             .classList.add("hidden");
-
     }
 
 
@@ -610,15 +461,11 @@
      * QUAY LẠI CHỌN LOẠI HỘI ĐỒNG
      * =========================================================
      */
-
     function goBackToCouncilType() {
-
         hideAllSteps();
 
-        document
-            .getElementById("step-council-type")
+        document.getElementById("step-council-type")
             .classList.remove("hidden");
-
     }
 
 
@@ -627,17 +474,12 @@
      * QUAY LẠI CHỌN MÔN
      * =========================================================
      */
-
     function goBackToSubject() {
-
-        document
-            .getElementById("step-teachers")
+        document.getElementById("step-teachers")
             .classList.add("hidden");
 
-        document
-            .getElementById("step-subject")
+        document.getElementById("step-subject")
             .classList.remove("hidden");
-
     }
 
 
@@ -646,485 +488,329 @@
      * CHỌN MÔN THI
      * =========================================================
      */
-
     function selectSubject() {
-
         const subjectId =
-            document
-                .getElementById("subject-select")
-                .value;
-
+            document.getElementById("subject-select").value;
 
         if (!subjectId) {
-
-            document
-                .getElementById("step-teachers")
+            document.getElementById("step-teachers")
                 .classList.add("hidden");
-
             return;
-
         }
 
-
-        document
-            .getElementById("selected-subject")
-            .innerText =
-                subjects[subjectId];
-
+        document.getElementById("selected-subject")
+            .innerText = subjects[subjectId];
 
         renderSubjectTeachers();
 
-
-        document
-            .getElementById("step-teachers")
+        document.getElementById("step-teachers")
             .classList.remove("hidden");
-
     }
 
 
     /*
      * =========================================================
-     * RENDER GIÁO VIÊN THEO MÔN
+     * RENDER GIÁO VIÊN HỢP LỆ THEO MÔN
      * =========================================================
      */
-
     function renderSubjectTeachers() {
-
         const subjectId =
-            document
-                .getElementById("subject-select")
-                .value;
-
+            document.getElementById("subject-select").value;
 
         const teacherList =
-            document
-                .getElementById("teacher-list");
-
+            document.getElementById("teacher-list");
 
         teacherList.innerHTML = "";
 
+        const eligibleTeachers =
+            (teachers[subjectId] || [])
+                .filter(teacher => teacher.nominated);
 
-        teachers[subjectId].forEach(teacher => {
+        if (eligibleTeachers.length === 0) {
+            teacherList.innerHTML = `
+                <div class="rounded-lg border border-red-200 bg-red-50 p-4 text-red-700">
+                    Danh sách giáo viên chưa hoàn chỉnh
+                </div>
+            `;
 
-            const label =
-                document.createElement("label");
+            syncSubjectAssignments();
+            return;
+        }
 
+        eligibleTeachers.forEach(teacher => {
+            const label = document.createElement("label");
 
             label.className =
-                "block mb-4";
-
+                "flex items-center gap-3 border rounded-lg p-3 cursor-pointer hover:bg-gray-50";
 
             label.innerHTML = `
-
                 <input
                     type="checkbox"
                     name="subject-teachers[]"
                     value="${teacher.id}"
-                    onchange="renderSubjectLeaders()"
+                    data-name="${teacher.name}"
+                    class="h-4 w-4"
                 >
 
-                ${teacher.name}
-
+                <span>${teacher.name}</span>
             `;
-
 
             teacherList.appendChild(label);
-
         });
 
-
-        renderSubjectLeaders();
-
+        syncSubjectAssignments();
     }
 
 
     /*
      * =========================================================
-     * RENDER TRƯỞNG HỘI ĐỒNG
-     *
-     * Chỉ những giáo viên đã được tick tham gia
-     * mới xuất hiện ở đây.
+     * LƯU HỘI ĐỒNG RA ĐỀ / CHẤM / PHÚC KHẢO
      * =========================================================
      */
+    
+let subjectAssignments = [];
 
-    function renderSubjectLeaders() {
+function syncSubjectAssignments() {
+    const checked = [...document.querySelectorAll('input[name="subject-teachers[]"]:checked')];
+    const ids = new Set(checked.map(el => String(el.value)));
 
-        const leaderList =
-            document
-                .getElementById("leader-list");
+    subjectAssignments = subjectAssignments.filter(x => ids.has(String(x.id)));
 
-
-        const selectedTeachers =
-            document.querySelectorAll(
-                'input[name="subject-teachers[]"]:checked'
-            );
-
-
-        leaderList.innerHTML = "";
-
-
-        if (selectedTeachers.length === 0) {
-
-            leaderList.innerHTML = `
-                <p>
-                    Vui lòng chọn giáo viên tham gia hội đồng trước.
-                </p>
-            `;
-
-            return;
+    checked.forEach(el => {
+        const id = String(el.value);
+        if (!subjectAssignments.some(x => String(x.id) === id)) {
+            const row = el.closest('[data-teacher-id]');
+            const name = row?.dataset?.teacherName || row?.querySelector('.teacher-name')?.textContent?.trim() || el.dataset.name || 'Giáo viên';
+            subjectAssignments.push({
+                id,
+                name,
+                isLeader: false,
+                isBackup: false
+            });
         }
+    });
 
+    renderSubjectAssignments();
+}
 
-        selectedTeachers.forEach(checkbox => {
+function setSubjectLeader(id) {
+    subjectAssignments.forEach(x => x.isLeader = String(x.id) === String(id));
+    // Trưởng hội đồng và dự phòng là 2 vai trò riêng.
+    const selected = subjectAssignments.find(x => String(x.id) === String(id));
+    if (selected) selected.isBackup = false;
+    renderSubjectAssignments();
+}
 
-            const teacher =
-                teachers[
-                    document
-                        .getElementById("subject-select")
-                        .value
-                ].find(
-                    item =>
-                        item.id == checkbox.value
-                );
+function toggleSubjectBackup(id) {
+    const item = subjectAssignments.find(x => String(x.id) === String(id));
+    if (!item) return;
+    item.isBackup = !item.isBackup;
+    if (item.isBackup) item.isLeader = false;
+    renderSubjectAssignments();
+}
 
+function renderSubjectAssignments() {
+    const box = document.getElementById('subject-assignment-list');
+    if (!box) return;
 
-            const label =
-                document.createElement("label");
-
-
-            label.className =
-                "block mb-3";
-
-
-            label.innerHTML = `
-
-                <input
-                    type="radio"
-                    name="subject-leader"
-                    value="${teacher.id}"
-                >
-
-                ${teacher.name}
-
-            `;
-
-
-            leaderList.appendChild(label);
-
-        });
-
+    if (!subjectAssignments.length) {
+        box.innerHTML = '<p class="text-gray-500">Vui lòng chọn giáo viên tham gia hội đồng trước.</p>';
+        return;
     }
 
+    box.innerHTML = subjectAssignments.map(t => `
+        <div class="assignment-row">
+            <div class="teacher-info">
+                <span class="teacher-name">${escapeHtml(t.name)}</span>
+            </div>
+            <label class="role-option">
+                <input type="radio"
+                       name="subject-leader"
+                       value="${t.id}"
+                       ${t.isLeader ? 'checked' : ''}
+                       onchange="setSubjectLeader('${t.id}')">
+                Trưởng hội đồng
+            </label>
+            <label class="role-option">
+                <input type="checkbox"
+                       name="subject-backups[]"
+                       value="${t.id}"
+                       ${t.isBackup ? 'checked' : ''}
+                       onchange="toggleSubjectBackup('${t.id}')">
+                Dự phòng
+            </label>
+        </div>
+    `).join('');
+}
 
-    /*
-     * =========================================================
-     * TẠO HỘI ĐỒNG THEO MÔN
-     * =========================================================
-     */
+function createSubjectCouncil() {
+    const leader = subjectAssignments.find(x => x.isLeader);
+    const backups = subjectAssignments.filter(x => x.isBackup);
 
-    function createSubjectCouncil() {
-
-        const selectedTeachers =
-            document.querySelectorAll(
-                'input[name="subject-teachers[]"]:checked'
-            );
-
-
-        const leader =
-            document.querySelector(
-                'input[name="subject-leader"]:checked'
-            );
-
-
-        if (selectedTeachers.length === 0) {
-
-            alert(
-                "Vui lòng chọn ít nhất một giáo viên."
-            );
-
-            return;
-        }
-
-
-        if (!leader) {
-
-            alert(
-                "Vui lòng chọn trưởng hội đồng."
-            );
-
-            return;
-        }
-
-
-        alert(
-            "Đã đủ thông tin để tạo hội đồng."
-        );
-
-
-        /*
-         * Sau này submit API/PHP tại đây.
-         */
-
+    if (!subjectAssignments.length) {
+        alert('Vui lòng chọn ít nhất một giáo viên.');
+        return;
     }
 
+    if (!leader) {
+        alert('Vui lòng chọn 1 giáo viên làm trưởng hội đồng.');
+        return;
+    }
 
-    /*
-     * =========================================================
-     * RENDER DANH SÁCH GIÁO VIÊN GÁC THI
-     * =========================================================
-     */
+    if (backups.length < 5) {
+        alert('Danh sách chưa hợp lệ: cần ít nhất 5 giáo viên dự phòng.');
+        return;
+    }
 
+    alert('Danh sách hợp lệ và đã sẵn sàng để lưu.');
+}
     function renderProctorTeachers() {
-
         const teacherList =
-            document
-                .getElementById("proctor-teacher-list");
-
+            document.getElementById("proctor-teacher-list");
 
         teacherList.innerHTML = "";
 
+        /*
+         * GV đã được phân công ở bất kỳ điểm thi nào
+         * sẽ không còn xuất hiện trong danh sách chưa phân công.
+         */
+        const assignedTeacherIds =
+            new Set(
+                proctorAssignments.map(
+                    assignment => assignment.teacherId
+                )
+            );
 
-        const proctorTeachers = [
+        const availableTeachers =
+            proctorTeachers.filter(
+                teacher => !assignedTeacherIds.has(teacher.id)
+            );
 
-            {
-                id: 1,
-                name: "Nguyễn Văn A"
-            },
+        if (availableTeachers.length === 0) {
+            teacherList.innerHTML = `
+                <div class="rounded-lg border border-yellow-200 bg-yellow-50 p-4 text-yellow-700">
+                    Danh sách giáo viên chưa hoàn chỉnh
+                </div>
+            `;
+            return;
+        }
 
-            {
-                id: 2,
-                name: "Nguyễn Thị B"
-            },
+        availableTeachers.forEach(teacher => {
+            const label = document.createElement("label");
 
-            {
-                id: 3,
-                name: "Trần Văn C"
-            },
+            label.className =
+                "flex items-center gap-3 border rounded-lg p-3 cursor-pointer hover:bg-gray-50";
 
-            {
-                id: 4,
-                name: "Trần Thị D"
-            },
+            label.innerHTML = `
+                <input
+                    type="checkbox"
+                    class="proctor-teacher-checkbox h-4 w-4"
+                    value="${teacher.id}"
+                >
 
-            {
-                id: 5,
-                name: "Lê Văn E"
-            }
-
-        ];
-
-
-        proctorTeachers.forEach(teacher => {
-
-            const container =
-                document.createElement("div");
-
-
-            container.className =
-                "border rounded p-3";
-
-
-            container.innerHTML = `
-
-                <label class="block">
-
-                    <input
-                        type="checkbox"
-                        class="proctor-teacher-checkbox"
-                        value="${teacher.id}"
-                    >
-
-                    ${teacher.name}
-
-                </label>
-
-
-                <label class="block mt-2 ml-6">
-
-                    <input
-                        type="checkbox"
-                        class="proctor-backup-checkbox"
-                        data-teacher-id="${teacher.id}"
-                    >
-
-                    Dự phòng
-
-                </label>
-
+                <span>${teacher.name}</span>
             `;
 
-
-            teacherList.appendChild(container);
-
+            teacherList.appendChild(label);
         });
-
     }
 
 
     /*
      * =========================================================
-     * THÊM GIÁO VIÊN VÀO ĐIỂM THI
+     * THÊM NHIỀU GIÁO VIÊN VÀO ĐIỂM THI
      * =========================================================
      */
-
     function addTeachersToLocation() {
-
         const location =
-            document
-                .getElementById("location-select");
-
+            document.getElementById("location-select");
 
         if (!location.value) {
-
-            alert(
-                "Vui lòng chọn điểm thi."
-            );
-
+            alert("Vui lòng chọn điểm thi.");
             return;
         }
-
-
-        const locationId =
-            location.value;
-
-
-        const locationName =
-            location.options[
-                location.selectedIndex
-            ].text;
-
 
         const selectedTeachers =
             document.querySelectorAll(
                 ".proctor-teacher-checkbox:checked"
             );
 
-
         if (selectedTeachers.length === 0) {
-
-            alert(
-                "Vui lòng chọn ít nhất một giáo viên."
-            );
-
+            alert("Vui lòng chọn ít nhất một giáo viên.");
             return;
         }
 
+        const locationId = location.value;
+
+        const locationName =
+            location.options[
+                location.selectedIndex
+            ].text;
+
+        const teacherMap = Object.fromEntries(
+            proctorTeachers.map(
+                teacher => [teacher.id, teacher]
+            )
+        );
 
         selectedTeachers.forEach(checkbox => {
-
             const teacherId =
                 Number(checkbox.value);
 
+            const teacher =
+                teacherMap[teacherId];
+
+            if (!teacher) return;
 
             /*
-             * Tìm checkbox dự phòng tương ứng
+             * Không cho thêm cùng một GV nhiều lần
+             * và không cho một GV xuất hiện ở nhiều điểm thi
+             * trong demo.
              */
-
-            const backupCheckbox =
-                document.querySelector(
-                    `.proctor-backup-checkbox[data-teacher-id="${teacherId}"]`
-                );
-
-
-            const teacherNames = {
-
-                1: "Nguyễn Văn A",
-
-                2: "Nguyễn Thị B",
-
-                3: "Trần Văn C",
-
-                4: "Trần Thị D",
-
-                5: "Lê Văn E"
-
-            };
-
-
-            /*
-             * Không cho thêm cùng một giáo viên
-             * nhiều lần vào cùng một điểm thi.
-             */
-
             const alreadyAssigned =
                 proctorAssignments.some(
                     assignment =>
-                        assignment.locationId === locationId
-                        &&
                         assignment.teacherId === teacherId
                 );
 
+            if (alreadyAssigned) return;
 
-            if (alreadyAssigned) {
-
-                return;
-
-            }
-
-
-            proctorAssignments.push({
-
-                locationId:
-                    locationId,
-
-                locationName:
-                    locationName,
-
-                teacherId:
-                    teacherId,
-
-                teacherName:
-                    teacherNames[teacherId],
-
-                isBackup:
-                    backupCheckbox
-                        ? backupCheckbox.checked
-                        : false
-
+            proctorAssignments.push({isLeader: false, isBackup: false,
+                locationId,
+                locationName,
+                teacherId,
+                teacherName: teacher.name
             });
-
         });
 
-
         renderSelectedLocationAssignments();
-
-        renderProctorLeaders();
-
-
-        /*
-         * Reset checkbox sau khi thêm
-         */
-
-        document
-            .querySelectorAll(
-                ".proctor-teacher-checkbox"
-            )
-            .forEach(
-                checkbox =>
-                    checkbox.checked = false
-            );
-
-
-        document
-            .querySelectorAll(
-                ".proctor-backup-checkbox"
-            )
-            .forEach(
-                checkbox =>
-                    checkbox.checked = false
-            );
-
+        renderProctorRoles();
+        renderProctorTeachers();
     }
 
 
     /*
      * =========================================================
-     * RENDER PHÂN CÔNG
+     * RENDER PHÂN CÔNG HIỆN TẠI
      * =========================================================
      */
+    
+function setProctorLeader(id) {
+    proctorAssignments.forEach(x => x.isLeader = String(x.teacherId) === String(id));
+    const selected = proctorAssignments.find(x => String(x.teacherId) === String(id));
+    if (selected) selected.isBackup = false;
+    renderProctorRoles();
+}
 
-    function renderSelectedLocationAssignments() {
+function toggleProctorBackup(id) {
+    const item = proctorAssignments.find(x => String(x.teacherId) === String(id));
+    if (!item) return;
+    item.isBackup = !item.isBackup;
+    if (item.isBackup) item.isLeader = false;
+    renderProctorRoles();
+}
 
+function renderSelectedLocationAssignments() {
         const location =
             document.getElementById("location-select");
 
@@ -1133,26 +819,14 @@
 
         assignmentList.innerHTML = "";
 
-
-        /*
-        * Chưa chọn điểm thi
-        */
-
         if (!location.value) {
-
             assignmentList.innerHTML = `
-                <p>
+                <p class="text-gray-500">
                     Vui lòng chọn điểm thi.
                 </p>
             `;
-
             return;
         }
-
-
-        /*
-        * Lấy những giáo viên thuộc điểm thi đang chọn
-        */
 
         const assignments =
             proctorAssignments.filter(
@@ -1160,27 +834,15 @@
                     assignment.locationId === location.value
             );
 
-
-        /*
-        * Điểm thi chưa có giáo viên
-        */
-
         if (assignments.length === 0) {
-
             assignmentList.innerHTML = `
-                <p>
+                <p class="text-gray-500">
                     Chưa có giáo viên nào được phân công tại
                     <strong>${location.options[location.selectedIndex].text}</strong>.
                 </p>
             `;
-
             return;
         }
-
-
-        /*
-        * Hiển thị tên điểm thi
-        */
 
         const locationTitle =
             document.createElement("div");
@@ -1191,192 +853,142 @@
         locationTitle.innerText =
             location.options[location.selectedIndex].text;
 
-
         assignmentList.appendChild(locationTitle);
 
-
-        /*
-        * Hiển thị giáo viên
-        */
-
         assignments.forEach(assignment => {
-
             const teacher =
                 document.createElement("div");
 
             teacher.className =
-                "border rounded p-3 mb-2";
-
+                "border rounded-lg p-3 mb-2";
 
             teacher.innerHTML = `
-
-                <div>
+                <div class="font-medium">
                     ${assignment.teacherName}
                 </div>
-
-                <div class="mt-1">
-
-                    ${
-                        assignment.isBackup
-                            ? "Dự phòng"
-                            : "Chính thức"
-                    }
-
+                <div class="text-sm text-gray-500 mt-1">
+                    Đã được phân công
                 </div>
-
             `;
 
-
             assignmentList.appendChild(teacher);
-
         });
-
     }
 
 
     /*
      * =========================================================
-     * RENDER DANH SÁCH TRƯỞNG HỘI ĐỒNG GÁC THI
-     *
-     * Chỉ những giáo viên đã được phân công
-     * mới được chọn làm trưởng.
+     * RENDER TRƯỞNG HỘI ĐỒNG & DỰ PHÒNG GÁC THI (BẢNG GỘP CHUNG)
      * =========================================================
      */
-
-    function renderProctorLeaders() {
-
-        const leaderList =
-            document
-                .getElementById("proctor-leader-list");
-
-
-        leaderList.innerHTML = "";
-
+    function renderProctorRoles() {
+        const box = document.getElementById("proctor-role-list");
+        if (!box) return;
 
         if (proctorAssignments.length === 0) {
-
-            leaderList.innerHTML = `
-
-                <p>
+            box.innerHTML = `
+                <p class="text-gray-500">
                     Vui lòng phân công giáo viên trước.
                 </p>
-
             `;
-
             return;
         }
 
-
-        /*
-         * Lấy danh sách giáo viên duy nhất.
-         */
-
         const uniqueTeachers = [];
 
-
         proctorAssignments.forEach(assignment => {
-
             const exists =
                 uniqueTeachers.some(
                     teacher =>
                         teacher.id === assignment.teacherId
                 );
 
-
             if (!exists) {
-
                 uniqueTeachers.push({
-
-                    id:
-                        assignment.teacherId,
-
-                    name:
-                        assignment.teacherName
-
+                    id: assignment.teacherId,
+                    name: assignment.teacherName,
+                    isLeader: !!assignment.isLeader,
+                    isBackup: !!assignment.isBackup
                 });
-
             }
-
         });
 
-
-        uniqueTeachers.forEach(teacher => {
-
-            const label =
-                document.createElement("label");
-
-
-            label.className =
-                "block mb-3";
-
-
-            label.innerHTML = `
-
-                <input
-                    type="radio"
-                    name="proctor-leader"
-                    value="${teacher.id}"
-                >
-
-                ${teacher.name}
-
-            `;
-
-
-            leaderList.appendChild(label);
-
-        });
-
+        box.innerHTML = uniqueTeachers.map(teacher => `
+            <div class="assignment-row">
+                <div class="teacher-info">
+                    <span class="teacher-name">${escapeHtml(teacher.name)}</span>
+                </div>
+                <label class="role-option">
+                    <input type="radio"
+                           name="proctor-leader"
+                           value="${teacher.id}"
+                           ${teacher.isLeader ? 'checked' : ''}
+                           onchange="setProctorLeader('${teacher.id}')">
+                    Trưởng hội đồng
+                </label>
+                <label class="role-option">
+                    <input type="checkbox"
+                           name="proctor-backups[]"
+                           value="${teacher.id}"
+                           ${teacher.isBackup ? 'checked' : ''}
+                           onchange="toggleProctorBackup('${teacher.id}')">
+                    Dự phòng
+                </label>
+            </div>
+        `).join('');
     }
 
 
     /*
      * =========================================================
-     * TẠO HỘI ĐỒNG GÁC THI
+     * LƯU HỘI ĐỒNG GÁC THI
      * =========================================================
      */
-
     function createProctorCouncil() {
-
         if (proctorAssignments.length === 0) {
-
-            alert(
-                "Vui lòng phân công ít nhất một giáo viên."
-            );
-
+            alert("Danh sách giáo viên chưa hoàn chỉnh");
             return;
         }
-
 
         const leader =
             document.querySelector(
                 'input[name="proctor-leader"]:checked'
             );
 
-
-        if (!leader) {
-
-            alert(
-                "Vui lòng chọn trưởng hội đồng."
+        const backups =
+            document.querySelectorAll(
+                'input[name="proctor-backups[]"]:checked'
             );
 
+        /*
+         * Bước 11: kiểm tra giáo viên hợp lệ.
+         */
+        if (!leader) {
+            alert("Vui lòng chọn trưởng Hội đồng thi.");
             return;
         }
 
+        if (backups.length === 0) {
+            const confirmWithoutBackup =
+                confirm("Bạn chưa chọn giáo viên dự phòng. Vẫn lưu danh sách?");
+
+            if (!confirmWithoutBackup) return;
+        }
 
         alert(
-            "Đã đủ thông tin để tạo hội đồng."
+            "Kiểm tra giáo viên hợp lệ thành công.\n" +
+            "Thông tin giáo viên và vai trò đã được cập nhật vào Hội đồng Gác thi."
         );
 
-
-        /*
-         * Sau này submit API/PHP tại đây.
-         */
-
+        // TODO: submit API/PHP để lưu database.
     }
 
+document.addEventListener('change', function (e) {
+    if (e.target.matches('input[name="subject-teachers[]"]')) {
+        syncSubjectAssignments();
+    }
+});
 </script>
 
 </body>
-
 </html>
