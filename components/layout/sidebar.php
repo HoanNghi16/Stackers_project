@@ -1,7 +1,5 @@
 <?php
-    function SideBar(){
-        echo "
-            
-        "
+    function SideBar(items){
+        return;
     }
 ?>
