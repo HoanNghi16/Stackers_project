@@ -84,7 +84,7 @@ function renderHeader()
 {
     global $wardOptions, $schoolOptions, $loaiHinhOptions, $navItems, $selectClass;
     ?>
-    <header class="relative bg-gradient-to-b from-blue-700 via-blue-700 to-blue-600 text-white">
+    <header class="fixed w-full h-20 bg-gradient-to-b from-blue-700 via-blue-700 to-blue-600 text-white">
         <!-- ============ Top bar: logo + nav + CTA ============ -->
         <div class="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
 

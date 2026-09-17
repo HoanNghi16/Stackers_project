@@ -1,7 +1,10 @@
 <?php
 // Trang demo quản lý và phân công các Hội đồng thi.
 ?>
-
+<?php
+    require("../../../components/layout/header.php");
+    require("../../../components/layout/sidebar.php")
+?>
 <!DOCTYPE html>
 <html lang="vi">
 <head>
@@ -60,7 +63,11 @@ function escapeHtml(value) {
 </head>
 
 <body class="bg-gray-50 text-gray-800">
-<div class="max-w-6xl mx-auto p-8">
+    <?php
+        renderHeader();
+        renderSidebar();
+    ?>
+<div class="ml-72 pt-24 max mx-auto p-8">
 
     <!-- =====================================================
          STEP 1: CHỌN LOẠI HỘI ĐỒNG
