@@ -1,6 +1,7 @@
 <!-- TRANG CHỦ CỦA NAM -->
 <?php
-    require("../components/layout/header.php")
+    require("../components/layout/header.php");
+    require("../components/layout/sidebar.php");
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -14,6 +15,7 @@
 <body>
     <?php
         renderHeader();
+        renderSidebar()
     ?>
 </body>
 </html>
