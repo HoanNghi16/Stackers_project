@@ -1,7 +1,3 @@
-<?php
-// Trang demo quản lý và phân công các Hội đồng thi.
-?>
-
 <!DOCTYPE html>
 <html lang="vi">
 <head>
@@ -61,11 +57,6 @@ function escapeHtml(value) {
 
 <body class="bg-gray-50 text-gray-800">
 <div class="max-w-6xl mx-auto p-8">
-
-    <!-- =====================================================
-         STEP 1: CHỌN LOẠI HỘI ĐỒNG
-         Theo Basic Flow: bước 1 -> 2 -> 3
-    ====================================================== -->
     <div id="step-council-type">
         <h1 class="text-center font-bold text-2xl mb-2">
             Quản lý các Hội đồng thi
