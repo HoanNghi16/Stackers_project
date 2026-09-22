@@ -13,22 +13,22 @@
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 
-<body class="p-8">
+<body class="bg-gray-50 min-h-screen p-8">
 
     <div class="max-w-2xl mx-auto">
 
         <!-- HEADER -->
 
-        <div class="border-b pb-4 mb-6">
-
-            <h1 class="text-2xl font-bold">
-                Xác thực OTP
-            </h1>
-
-            <p class="mt-2">
-                Xác thực danh tính người dùng
-            </p>
-
+        <div class="mb-8 flex items-center gap-4">
+            <div class="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center text-blue-600 shrink-0">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+            </div>
+            <div>
+                <h1 class="text-2xl font-bold text-gray-800">Xác thực OTP</h1>
+                <p class="text-gray-500 mt-1">Xác thực danh tính người dùng</p>
+            </div>
         </div>
 
 
@@ -36,783 +36,74 @@
         <!-- BƯỚC 1: NHẬP TÀI KHOẢN -->
         <!-- ========================= -->
 
-        <section
-            id="step-user"
-            class="border p-6"
-        >
+        <section class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
 
-            <h2 class="text-xl font-bold mb-6">
+            <!-- STEP INDICATOR -->
+            <div class="flex items-center gap-2 mb-6">
+                <span class="w-7 h-7 rounded-full bg-blue-600 text-white text-sm font-semibold flex items-center justify-center">1</span>
+                <span class="text-sm text-gray-400">Tài khoản</span>
+
+                <span class="flex-1 h-px bg-gray-200 mx-1"></span>
+
+                <span class="w-7 h-7 rounded-full bg-gray-100 text-gray-400 text-sm font-semibold flex items-center justify-center">2</span>
+                <span class="text-sm text-gray-300">Phương thức</span>
+
+                <span class="flex-1 h-px bg-gray-200 mx-1"></span>
+
+                <span class="w-7 h-7 rounded-full bg-gray-100 text-gray-400 text-sm font-semibold flex items-center justify-center">3</span>
+                <span class="text-sm text-gray-300">Mã OTP</span>
+            </div>
+
+            <h2 class="text-xl font-semibold text-gray-800 mb-1">
                 Xác thực người dùng
             </h2>
 
+            <p class="text-gray-500 mb-6">
+                Nhập thông tin để bắt đầu quá trình xác thực
+            </p>
+
 
             <div>
 
-                <label class="block mb-2">
+                <label class="block text-sm font-medium text-gray-700 mb-1.5">
                     Mã định danh hoặc tên đăng nhập
                 </label>
 
-                <input
-                    type="text"
-                    id="username"
-                    class="border rounded p-2 w-full"
-                    placeholder="Nhập mã định danh hoặc tên đăng nhập"
-                >
+                <div class="relative">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                    <input
+                        type="text"
+                        class="w-full border border-gray-200 rounded-xl pl-10 pr-4 py-2.5
+                               focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="Nhập mã định danh hoặc tên đăng nhập"
+                    >
+                </div>
 
             </div>
 
 
-            <div class="mt-6">
+            <div class="mt-8 pt-5 border-t border-gray-100">
 
                 <button
                     type="button"
-                    onclick="checkUser()"
-                    class="border px-5 py-2 rounded"
+                    class="bg-blue-600 hover:bg-blue-700 text-white
+                           px-6 py-2.5 rounded-xl font-medium
+                           inline-flex items-center gap-2
+                           shadow-sm hover:shadow transition-all"
                 >
                     Tiếp tục
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                    </svg>
                 </button>
 
             </div>
 
         </section>
-
-
-        <!-- ========================= -->
-        <!-- BƯỚC 3: CHỌN PHƯƠNG THỨC -->
-        <!-- ========================= -->
-
-        <section
-            id="step-method"
-            class="hidden border p-6"
-        >
-
-            <h2 class="text-xl font-bold mb-6">
-                Chọn phương thức xác thực
-            </h2>
-
-
-            <p class="mb-4">
-                Chọn phương thức nhận mã OTP:
-            </p>
-
-
-            <div class="space-y-3">
-
-                <label class="flex items-center gap-3 border p-4 rounded">
-
-                    <input
-                        type="radio"
-                        name="otp-method"
-                        value="email"
-                    >
-
-                    <span>
-                        Email
-                    </span>
-
-                </label>
-
-
-                <label class="flex items-center gap-3 border p-4 rounded">
-
-                    <input
-                        type="radio"
-                        name="otp-method"
-                        value="phone"
-                    >
-
-                    <span>
-                        Số điện thoại
-                    </span>
-
-                </label>
-
-            </div>
-
-
-            <div class="mt-6 flex gap-3">
-
-                <button
-                    type="button"
-                    onclick="backToUser()"
-                    class="border px-5 py-2 rounded"
-                >
-                    Quay lại
-                </button>
-
-
-                <button
-                    type="button"
-                    onclick="sendOTP()"
-                    class="border px-5 py-2 rounded"
-                >
-                    Gửi mã OTP
-                </button>
-
-            </div>
-
-        </section>
-
-
-        <!-- ========================= -->
-        <!-- BƯỚC 6: NHẬP OTP -->
-        <!-- ========================= -->
-
-        <section
-            id="step-otp"
-            class="hidden border p-6"
-        >
-
-            <h2 class="text-xl font-bold mb-6">
-                Nhập mã OTP
-            </h2>
-
-
-            <p id="otp-message" class="mb-4">
-                Mã OTP đã được gửi đến phương thức xác thực của bạn.
-            </p>
-
-
-            <div>
-
-                <label class="block mb-2">
-                    Mã OTP
-                </label>
-
-                <input
-                    type="text"
-                    id="otp"
-                    maxlength="6"
-                    class="border rounded p-2 w-full text-center tracking-widest"
-                    placeholder="Nhập mã OTP"
-                >
-
-            </div>
-
-
-            <!-- TIMER -->
-
-            <div class="mt-4">
-
-                Thời gian còn lại:
-
-                <strong id="timer">
-                    01:00
-                </strong>
-
-            </div>
-
-
-            <!-- SỐ LẦN NHẬP -->
-
-            <div class="mt-2">
-
-                Số lần nhập:
-
-                <strong id="attempt">
-                    0 / 5
-                </strong>
-
-            </div>
-
-
-            <div class="mt-6 flex gap-3">
-
-                <button
-                    type="button"
-                    onclick="backToMethod()"
-                    class="border px-5 py-2 rounded"
-                >
-                    Quay lại
-                </button>
-
-
-                <button
-                    type="button"
-                    onclick="verifyOTP()"
-                    class="border px-5 py-2 rounded"
-                >
-                    Xác thực
-                </button>
-
-            </div>
-
-        </section>
-
-
-        <!-- ========================= -->
-        <!-- KẾT QUẢ -->
-        <!-- ========================= -->
-
-        <section
-            id="step-result"
-            class="hidden border p-6"
-        >
-
-            <h2 class="text-xl font-bold mb-6">
-                Kết quả xác thực
-            </h2>
-
-
-            <p id="result-message">
-            </p>
-
-
-            <div class="mt-6">
-
-                <button
-                    type="button"
-                    onclick="restart()"
-                    class="border px-5 py-2 rounded"
-                >
-                    Thực hiện lại
-                </button>
-
-            </div>
-
-        </section>
-
-
-        <!-- ========================= -->
-        <!-- THÔNG BÁO -->
-        <!-- ========================= -->
-
-        <div
-            id="message"
-            class="hidden border p-4 mt-6"
-        >
-        </div>
 
     </div>
-
-
-    <script>
-
-        /*
-        |--------------------------------------------------------------------------
-        | DEMO DATA
-        |--------------------------------------------------------------------------
-        */
-
-        const demoUser = {
-
-            username: "HS001",
-
-            email: "student@example.com",
-
-            phone: "0901234567"
-
-        };
-
-
-        let currentMethod = "";
-
-        let otp = "";
-
-        let attempts = 0;
-
-        let timerInterval = null;
-
-        let remainingSeconds = 60;
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | HIỂN THỊ SECTION
-        |--------------------------------------------------------------------------
-        */
-
-        const sections = [
-
-            "step-user",
-            "step-method",
-            "step-otp",
-            "step-result"
-
-        ];
-
-
-        function showSection(id) {
-
-            sections.forEach(section => {
-
-                document
-                    .getElementById(section)
-                    .classList
-                    .add("hidden");
-
-            });
-
-
-            document
-                .getElementById(id)
-                .classList
-                .remove("hidden");
-
-        }
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | BƯỚC 1 + 2
-        |--------------------------------------------------------------------------
-        */
-
-        function checkUser() {
-
-            const username =
-                document
-                    .getElementById("username")
-                    .value
-                    .trim();
-
-
-            if (username === "") {
-
-                showMessage(
-                    "Vui lòng nhập mã định danh hoặc tên đăng nhập."
-                );
-
-                return;
-
-            }
-
-
-            /*
-             * Demo:
-             * HS001 là tài khoản tồn tại.
-             */
-
-            if (username !== demoUser.username) {
-
-                showMessage(
-                    "Không tìm thấy dữ liệu người dùng."
-                );
-
-                return;
-
-            }
-
-
-            /*
-             * Người dùng hợp lệ
-             * → sang bước chọn phương thức
-             */
-
-            showSection("step-method");
-
-        }
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | BƯỚC 3 + 4 + 5
-        |--------------------------------------------------------------------------
-        */
-
-        function sendOTP() {
-
-            const method =
-                document.querySelector(
-                    'input[name="otp-method"]:checked'
-                );
-
-
-            if (!method) {
-
-                showMessage(
-                    "Vui lòng chọn phương thức xác thực."
-                );
-
-                return;
-
-            }
-
-
-            currentMethod =
-                method.value;
-
-
-            /*
-             * Bước 4:
-             * Kiểm tra thông tin liên hệ
-             */
-
-            if (
-                currentMethod === "email" &&
-                !demoUser.email
-            ) {
-
-                showMessage(
-                    "Email không hợp lệ."
-                );
-
-                return;
-
-            }
-
-
-            if (
-                currentMethod === "phone" &&
-                !demoUser.phone
-            ) {
-
-                showMessage(
-                    "Số điện thoại không hợp lệ."
-                );
-
-                return;
-
-            }
-
-
-            /*
-             * Bước 5:
-             * Sinh OTP demo
-             */
-
-            otp =
-                String(
-                    Math.floor(
-                        100000 +
-                        Math.random() * 900000
-                    )
-                );
-
-
-            console.log(
-                "OTP DEMO:",
-                otp
-            );
-
-
-            let destination =
-                currentMethod === "email"
-                    ? demoUser.email
-                    : demoUser.phone;
-
-
-            document
-                .getElementById("otp-message")
-                .innerText =
-                `Mã OTP đã được gửi đến ${destination}.`;
-
-
-            attempts = 0;
-
-            remainingSeconds = 60;
-
-
-            document
-                .getElementById("attempt")
-                .innerText =
-                "0 / 5";
-
-
-            showSection("step-otp");
-
-
-            startTimer();
-
-        }
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | BƯỚC 6 + 7
-        |--------------------------------------------------------------------------
-        */
-
-        function verifyOTP() {
-
-            const inputOTP =
-                document
-                    .getElementById("otp")
-                    .value
-                    .trim();
-
-
-            if (inputOTP === "") {
-
-                showMessage(
-                    "Vui lòng nhập mã OTP."
-                );
-
-                return;
-
-            }
-
-
-            /*
-             * Tăng số lần thử
-             */
-
-            attempts++;
-
-
-            document
-                .getElementById("attempt")
-                .innerText =
-                `${attempts} / 5`;
-
-
-            /*
-             * Kiểm tra vượt quá 5 lần
-             */
-
-            if (attempts > 5) {
-
-                stopTimer();
-
-                showResult(
-                    "Nhập quá số lần cho phép."
-                );
-
-                return;
-
-            }
-
-
-            /*
-             * Kiểm tra OTP
-             */
-
-            if (inputOTP !== otp) {
-
-                if (attempts >= 5) {
-
-                    stopTimer();
-
-                    showResult(
-                        "Nhập quá số lần cho phép."
-                    );
-
-                    return;
-
-                }
-
-
-                showMessage(
-                    "Xác thực thất bại. Mã OTP không hợp lệ."
-                );
-
-                return;
-
-            }
-
-
-            /*
-             * OTP hợp lệ
-             */
-
-            stopTimer();
-
-
-            showResult(
-                "Xác thực thành công."
-            );
-
-        }
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | TIMER 1 PHÚT
-        |--------------------------------------------------------------------------
-        */
-
-        function startTimer() {
-
-            stopTimer();
-
-
-            updateTimer();
-
-
-            timerInterval =
-                setInterval(() => {
-
-                    remainingSeconds--;
-
-
-                    updateTimer();
-
-
-                    if (remainingSeconds <= 0) {
-
-                        stopTimer();
-
-
-                        showResult(
-                            "Hết thời gian chờ."
-                        );
-
-                    }
-
-                }, 1000);
-
-        }
-
-
-        function updateTimer() {
-
-            const minutes =
-                Math.floor(
-                    remainingSeconds / 60
-                );
-
-
-            const seconds =
-                remainingSeconds % 60;
-
-
-            document
-                .getElementById("timer")
-                .innerText =
-                `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-
-        }
-
-
-        function stopTimer() {
-
-            if (timerInterval) {
-
-                clearInterval(
-                    timerInterval
-                );
-
-                timerInterval = null;
-
-            }
-
-        }
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | KẾT QUẢ
-        |--------------------------------------------------------------------------
-        */
-
-        function showResult(message) {
-
-            stopTimer();
-
-
-            document
-                .getElementById("result-message")
-                .innerText =
-                message;
-
-
-            showSection("step-result");
-
-        }
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | QUAY LẠI
-        |--------------------------------------------------------------------------
-        */
-
-        function backToUser() {
-
-            showSection("step-user");
-
-        }
-
-
-        function backToMethod() {
-
-            stopTimer();
-
-            showSection("step-method");
-
-        }
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | THỰC HIỆN LẠI
-        |--------------------------------------------------------------------------
-        */
-
-        function restart() {
-
-            stopTimer();
-
-
-            document
-                .getElementById("username")
-                .value = "";
-
-
-            document
-                .getElementById("otp")
-                .value = "";
-
-
-            document
-                .querySelectorAll(
-                    'input[name="otp-method"]'
-                )
-                .forEach(input => {
-
-                    input.checked = false;
-
-                });
-
-
-            attempts = 0;
-
-            remainingSeconds = 60;
-
-            otp = "";
-
-
-            hideMessage();
-
-
-            showSection("step-user");
-
-        }
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | MESSAGE
-        |--------------------------------------------------------------------------
-        */
-
-        function showMessage(message) {
-
-            const element =
-                document.getElementById("message");
-
-
-            element.innerText =
-                message;
-
-
-            element.classList.remove(
-                "hidden"
-            );
-
-        }
-
-
-        function hideMessage() {
-
-            document
-                .getElementById("message")
-                .classList
-                .add("hidden");
-
-        }
-
-    </script>
 
 </body>
 
