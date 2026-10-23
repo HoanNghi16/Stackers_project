@@ -17,6 +17,11 @@ $tieuChiUuTien = [
 
 $tongHeSo = array_sum(array_column($monThi, 'heSo'));
 $pageTitle = "Stackers - Thiết lập công thức tính điểm";
+
+// Header + sidebar dùng chung cho toàn hệ thống — nằm ở components/layout/
+// File trang này giả định được đặt trong thư mục pages/, nên lùi 1 cấp (../)
+require_once $_SERVER['DOCUMENT_ROOT'] . '/Stackers_project/components/layout/header.php';
+require_once $_SERVER['DOCUMENT_ROOT'] . '/Stackers_project/components/layout/sidebar.php';
 ?>
 <!DOCTYPE html>
 <html lang="vi">
@@ -25,69 +30,38 @@ $pageTitle = "Stackers - Thiết lập công thức tính điểm";
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title><?php echo $pageTitle; ?></title>
 <script src="https://cdn.tailwindcss.com"></script>
+<script>
+  // header.php/sidebar.php dùng các class bg-primary/text-primary — Tailwind CDN
+  // không có sẵn màu "primary", nên khai báo ở đây để 2 component hiện đúng màu.
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          primary: '#0284c7', // đổi theo màu thương hiệu thật của Stackers
+        }
+      }
+    }
+  }
+</script>
 <style>
-  /* Wireframe mode: no color accents, grayscale only */
   body { font-family: Arial, Helvetica, sans-serif; }
 </style>
 </head>
 <body class="bg-gray-100 text-gray-900">
 
-  <!-- Top bar -->
-  <header class="bg-white border-b border-gray-300">
-    <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
-      <div class="flex items-center gap-3">
-        <div class="w-9 h-9 border border-gray-400 flex items-center justify-center text-xs font-bold">
-          LOGO
-        </div>
-        <span class="font-semibold text-lg">Stackers</span>
-        <span class="text-gray-400">|</span>
-        <span class="text-sm text-gray-600">Hệ thống Quản lý Tuyển sinh 10</span>
-      </div>
-      <div class="flex items-center gap-4 text-sm text-gray-600">
-        <span>Sở GD&ĐT</span>
-        <div class="w-8 h-8 rounded-full border border-gray-400 flex items-center justify-center text-xs">
-          SGD
-        </div>
-      </div>
-    </div>
-  </header>
+  <?php renderHeader(); ?>
+  <?php renderSidebar(); ?>
 
-  <div class="max-w-7xl mx-auto flex">
-
-    <!-- Sidebar -->
-    <aside class="w-64 min-h-screen bg-white border-r border-gray-300 p-4 hidden md:block">
-      <nav class="space-y-1 text-sm">
-        <div class="px-3 py-2 text-gray-500">TỔNG QUAN</div>
-        <a href="#" class="block px-3 py-2 rounded border border-transparent hover:border-gray-300">Trang chủ</a>
-
-        <div class="px-3 py-2 text-gray-500 mt-3">HỘI ĐỒNG &amp; ĐỊA ĐIỂM THI</div>
-        <a href="#" class="block px-3 py-2 rounded border border-transparent hover:border-gray-300">Quản lý các hội đồng thi</a>
-        <a href="#" class="block px-3 py-2 rounded border border-transparent hover:border-gray-300">Quản lý địa điểm thi/chấm thi</a>
-        <a href="#" class="block px-3 py-2 rounded border border-transparent hover:border-gray-300">Quản lý bài thi</a>
-
-        <div class="px-3 py-2 text-gray-500 mt-3">ĐIỂM SỐ</div>
-        <a href="#" class="block px-3 py-2 rounded border border-gray-400 bg-gray-100 font-medium">
-          Thiết lập công thức tính điểm
-        </a>
-        <a href="#" class="block px-3 py-2 rounded border border-transparent hover:border-gray-300">Thiết lập tiêu chuẩn ưu tiên/khuyến khích</a>
-        <a href="#" class="block px-3 py-2 rounded border border-transparent hover:border-gray-300">Nhập điểm thi</a>
-        <a href="#" class="block px-3 py-2 rounded border border-transparent hover:border-gray-300">Nhập điểm phúc khảo</a>
-
-        <div class="px-3 py-2 text-gray-500 mt-3">TUYỂN SINH</div>
-        <a href="#" class="block px-3 py-2 rounded border border-transparent hover:border-gray-300">Xét tuyển</a>
-        <a href="#" class="block px-3 py-2 rounded border border-transparent hover:border-gray-300">Công bố điểm chuẩn</a>
-
-        <div class="px-3 py-2 text-gray-500 mt-3">DANH SÁCH &amp; BÁO CÁO</div>
-        <a href="#" class="block px-3 py-2 rounded border border-transparent hover:border-gray-300">Xem danh sách thí sinh</a>
-        <a href="#" class="block px-3 py-2 rounded border border-transparent hover:border-gray-300">Thống kê, báo cáo</a>
-
-        <div class="px-3 py-2 text-gray-500 mt-3">HỆ THỐNG</div>
-        <a href="#" class="block px-3 py-2 rounded border border-transparent hover:border-gray-300">Quản lý tài khoản</a>
-      </nav>
-    </aside>
-
-    <!-- Main content -->
-    <main class="flex-1 p-6">
+  <!--
+    Header là "fixed h-20" và sidebar là "fixed w-72 top-20" (xem components/layout),
+    nên nội dung chính phải chừa khoảng trống bằng đúng 2 kích thước đó,
+    nếu không nội dung sẽ bị header/sidebar đè lên trên.
+    pt-20   = chừa chỗ cho header (cao 5rem = 20 đơn vị Tailwind)
+    lg:pl-72 = chừa chỗ cho sidebar (rộng 18rem = 72 đơn vị Tailwind), chỉ áp dụng
+               từ màn hình lg trở lên vì sidebar ẩn trên mobile.
+  -->
+  <main class="pt-20 lg:pl-72">
+    <div class="max-w-5xl mx-auto p-6">
 
       <!-- Breadcrumb -->
       <div class="text-sm text-gray-500 mb-2">
@@ -220,8 +194,8 @@ $pageTitle = "Stackers - Thiết lập công thức tính điểm";
 
       </form>
 
-    </main>
-  </div>
+    </div>
+  </main>
 
   <!-- Modal: Lưu thành công (ẩn mặc định) -->
   <div id="modalThanhCong" class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
