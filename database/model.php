@@ -189,11 +189,6 @@ class BaseModel
     /**
      * Delete record
      */
-
-    public function custom_query($sql){
-        return;
-    }
-
     public function delete(mixed $id): bool
     {
         $sql = "DELETE FROM {$this->tableName}

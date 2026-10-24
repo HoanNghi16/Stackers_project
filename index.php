@@ -7,7 +7,7 @@
     $db_password = $env['DB_PASSWORD'] ?? '';
 
     // Kết nối
-    $conn = new mysqli($db_host, $db_user, $db_password, $db_name);
+    $conn = new mysqli($db_host, $db_user, $db_password);
 
     // echo "success";
 

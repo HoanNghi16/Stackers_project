@@ -124,7 +124,7 @@ $pageTitle = "Stackers - Thiết lập công thức tính điểm";
               <p id="loiTongHeSo" class="hidden text-red-600 text-xs mt-1"></p>
             </div>
           </div>
-
+  
           <table class="w-full text-sm">
             <thead>
               <tr class="text-left text-gray-500 border-b border-gray-200">
