@@ -1,361 +1,537 @@
 <?php
-// Wireframe / mockup — Use case: "Thiết lập công thức tính điểm"
-// Actor chính: Sở GD&ĐT
-// Dữ liệu bên dưới là dữ liệu mẫu để dựng giao diện, chưa kết nối CSDL thật.
+/**
+ * Use case: Thiết lập công thức tính điểm (Actor: Sở GD&ĐT).
+ * GiaoDienCongThuc trong sequence diagram: trang này chỉ dựng giao diện và chuyển
+ * dữ liệu cho CtrlThietLapCongThuc; mọi quy tắc nghiệp vụ nằm ở controller.
+ */
 
-$monThi = [
-    ['ma' => 'TOAN', 'ten' => 'Toán',       'heSo' => 2],
-    ['ma' => 'VAN',  'ten' => 'Ngữ văn',    'heSo' => 2],
-    ['ma' => 'ANH',  'ten' => 'Tiếng Anh',  'heSo' => 1],
-];
+use ThietLapCongThuc\CtrlThietLapCongThuc;
 
-$tieuChiUuTien = [
-    ['ten' => 'Con liệt sĩ / thương binh',            'diem' => 2.0],
-    ['ten' => 'Người dân tộc thiểu số',                'diem' => 1.0],
-    ['ten' => 'Có chứng chỉ nghề / năng khiếu',        'diem' => 0.5],
-];
+session_start();
 
-$tongHeSo = array_sum(array_column($monThi, 'heSo'));
-$pageTitle = "Stackers - Thiết lập công thức tính điểm";
+require __DIR__ . '/../../../index.php';                         // tạo $conn (và $env)
+require __DIR__ . '/../../../class/thiet-lap-cong-thuc-tinh-diem/ctrlThietLapCongThuc.php';
+require __DIR__ . '/../../../components/layout/header.php';
+require __DIR__ . '/../../../components/layout/sidebar.php';
 
-// Header + sidebar dùng chung cho toàn hệ thống — nằm ở components/layout/
-// File trang này giả định được đặt trong thư mục pages/, nên lùi 1 cấp (../)
-require_once $_SERVER['DOCUMENT_ROOT'] . '/Stackers_project/components/layout/header.php';
-require_once $_SERVER['DOCUMENT_ROOT'] . '/Stackers_project/components/layout/sidebar.php';
+// ---- Tiền điều kiện: đã đăng nhập với vai trò Sở GD&ĐT ----------------------
+// Chức năng đăng nhập chưa xong: khi .env có DEV_FAKE_LOGIN=1 thì tự gán vai trò
+// SO_GD để chạy thử trang này. KHÔNG bật cờ này trên môi trường thật.
+if (($env['DEV_FAKE_LOGIN'] ?? '') === '1' && empty($_SESSION['vaitro'])) {
+    $_SESSION['vaitro'] = 'SO_GD';
+}
+if (($_SESSION['vaitro'] ?? null) !== 'SO_GD') {
+    header('Location: /stackers_project/pages/login');
+    exit;
+}
+
+function h(?string $s): string
+{
+    return htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
+}
+
+/** "2.00" -> "2", "0.50" -> "0.5" */
+function fmtSo(?string $v): string
+{
+    $v = (string) $v;
+    return str_contains($v, '.') ? rtrim(rtrim($v, '0'), '.') : $v;
+}
+
+if (empty($_SESSION['csrf'])) {
+    $_SESSION['csrf'] = bin2hex(random_bytes(32));
+}
+
+$ctrl = new CtrlThietLapCongThuc($conn);
+
+// ---- Xử lý yêu cầu ------------------------------------------------------------
+$trangThai  = null;      // kết quả lần lưu vừa rồi (null nếu chỉ xem form)
+$thongBao   = '';
+$dsLoiBanner = [];       // các dòng hiển thị trong banner lỗi
+$loiTheoOTruong = [];    // "heSo.3" => [thông báo, ...]
+$formDaGui  = null;      // dữ liệu người dùng vừa gửi (để dựng lại form khi có lỗi)
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!hash_equals($_SESSION['csrf'], (string) ($_POST['csrf'] ?? ''))) {
+        $trangThai   = 'loi_nghiep_vu';
+        $thongBao    = 'Phiên làm việc đã hết hạn. Vui lòng thử lại.';
+        $dsLoiBanner = [$thongBao];
+    } else {
+        $nhap = $ctrl->chuanHoaDuLieuNhap($_POST);
+        $kq   = $ctrl->luuCongThuc($nhap['dsHeSo'], $nhap['dsTieuChuan']);
+
+        if ($kq['trangThai'] === 'thanh_cong') {
+            $_SESSION['flash_congthuc'] = $kq['thongBao'];
+            header('Location: ' . strtok($_SERVER['REQUEST_URI'], '?'));   // PRG: tránh gửi lại form khi F5
+            exit;
+        }
+
+        $trangThai = $kq['trangThai'];
+        $thongBao  = $kq['thongBao'];
+        $formDaGui = $nhap;
+
+        if ($trangThai === 'khong_hop_le') {
+            foreach ($kq['dsLoi'] as $l) {
+                $dsLoiBanner[] = $l['thongBao'];
+                $loiTheoOTruong[$l['truong']][] = $l['thongBao'];
+            }
+        } else {
+            $dsLoiBanner = explode("\n", $thongBao);
+        }
+    }
+}
+
+$thongBaoThanhCong = $_SESSION['flash_congthuc'] ?? '';
+unset($_SESSION['flash_congthuc']);
+
+// ---- Nội dung modal kết quả (mọi thông báo sau khi bấm "Lưu công thức") -------------
+$modal = null;   // ['loai' => 'thanh_cong'|'loi', 'tieuDe' => string, 'dong' => string[]]
+if ($thongBaoThanhCong !== '') {
+    $modal = [
+        'loai'   => 'thanh_cong',
+        'tieuDe' => $thongBaoThanhCong,
+        'dong'   => ['Công thức đã được lưu và áp dụng cho kỳ tuyển sinh hiện tại.'],
+    ];
+} elseif ($trangThai !== null) {
+    $modal = match ($trangThai) {
+        'khong_hop_le' => ['loai' => 'loi', 'tieuDe' => 'Không thể lưu công thức. Vui lòng kiểm tra lại:', 'dong' => $dsLoiBanner],
+        'loi_he_thong' => ['loai' => 'loi', 'tieuDe' => $thongBao, 'dong' => []],
+        default        => ['loai' => 'loi', 'tieuDe' => 'Không thể lưu công thức', 'dong' => $dsLoiBanner],
+    };
+}
+
+// ---- Dữ liệu cho form (bước 2 / luồng 2.1) --------------------------------------
+$duLieu      = $ctrl->yeuCauFormCongThuc();
+$ky          = $duLieu['ky'];
+$dsMon       = $duLieu['dsMon'];
+$daCoCongThuc = $duLieu['daCoCongThuc'];
+$namHienTai  = (int) (new DateTime('now', new DateTimeZone('Asia/Ho_Chi_Minh')))->format('Y');
+$choPhepNhap = $ky !== null && !empty($dsMon);
+
+// Giá trị hiển thị trong form: ưu tiên dữ liệu vừa gửi (khi có lỗi), nếu không thì dữ liệu đã lưu
+$giaTriHeSo = [];
+foreach ($dsMon as $mon) {
+    $ma = (string) $mon['mamonhoc'];
+    $giaTriHeSo[$ma] = $formDaGui !== null
+        ? ($formDaGui['dsHeSo'][$ma] ?? '')
+        : fmtSo($duLieu['dsHeSo'][(int) $ma] ?? '');
+}
+
+$dongTieuChuan = [];   // idx => [ma, loai, dieuKien, diemCong]
+if ($formDaGui !== null) {
+    $dongTieuChuan = $formDaGui['dsTieuChuan'];
+} else {
+    foreach ($duLieu['dsTieuChuan'] as $i => $tc) {
+        $dongTieuChuan[(string) $i] = [
+            'ma'       => (string) $tc['matieuchuan'],
+            'loai'     => $tc['loaitieuchuan'],
+            'dieuKien' => $tc['dieukienapdung'],
+            'diemCong' => fmtSo($tc['diemcong']),
+        ];
+    }
+}
+$idxTiepTheo = 0;
+foreach (array_keys($dongTieuChuan) as $k) {
+    if (ctype_digit((string) $k)) {
+        $idxTiepTheo = max($idxTiepTheo, (int) $k + 1);
+    }
+}
+
+/** In một dòng tiêu chuẩn (dùng cho cả dòng có sẵn và <template> thêm mới). */
+function renderDongTieuChuan(string $idx, array $tc, array $loiTheoOTruong): void
+{
+    $loiLoai = $loiTheoOTruong["tieuChuan.$idx.loai"] ?? [];
+    $loiDK   = $loiTheoOTruong["tieuChuan.$idx.dieuKien"] ?? [];
+    $loiDiem = $loiTheoOTruong["tieuChuan.$idx.diemCong"] ?? [];
+    $vienLoi = 'border-red-400 bg-red-50';
+    $vienThuong = 'border-slate-300 bg-white';
+    ?>
+    <tr class="js-dong-tieu-chuan border-b border-slate-100 align-top last:border-b-0">
+        <td class="px-4 py-3 sm:px-5">
+            <input type="hidden" name="tieuChuan[<?= h($idx) ?>][ma]" value="<?= h($tc['ma']) ?>">
+            <select name="tieuChuan[<?= h($idx) ?>][loai]"
+                    class="js-loai w-full rounded-lg border px-3 py-2 text-sm <?= $loiLoai ? $vienLoi : $vienThuong ?>">
+                <?php foreach (CtrlThietLapCongThuc::LOAI_TIEU_CHUAN as $maLoai => $nhan): ?>
+                    <option value="<?= h($maLoai) ?>" <?= $tc['loai'] === $maLoai ? 'selected' : '' ?>><?= h($nhan) ?></option>
+                <?php endforeach; ?>
+            </select>
+            <p class="js-loi mt-1 text-xs text-red-600 <?= $loiLoai ? '' : 'hidden' ?>"><?= h($loiLoai[0] ?? '') ?></p>
+        </td>
+        <td class="px-4 py-3 sm:px-5">
+            <input type="text" name="tieuChuan[<?= h($idx) ?>][dieuKien]" value="<?= h($tc['dieuKien']) ?>"
+                   maxlength="200" placeholder="Ví dụ: Con liệt sĩ"
+                   class="js-dieu-kien w-full rounded-lg border px-3 py-2 text-sm <?= $loiDK ? $vienLoi : $vienThuong ?>">
+            <p class="js-loi mt-1 text-xs text-red-600 <?= $loiDK ? '' : 'hidden' ?>"><?= h($loiDK[0] ?? '') ?></p>
+        </td>
+        <td class="px-4 py-3 sm:px-5">
+            <input type="text" inputmode="decimal" name="tieuChuan[<?= h($idx) ?>][diemCong]" value="<?= h($tc['diemCong']) ?>"
+                   class="js-diem-cong w-24 rounded-lg border px-3 py-2 text-sm <?= $loiDiem ? $vienLoi : $vienThuong ?>">
+            <p class="js-loi mt-1 text-xs text-red-600 <?= $loiDiem ? '' : 'hidden' ?>"><?= h($loiDiem[0] ?? '') ?></p>
+        </td>
+        <td class="px-4 py-3 text-right sm:px-5">
+            <button type="button" class="js-xoa rounded-lg px-2 py-2 text-sm text-slate-400 transition hover:bg-red-50 hover:text-red-600">
+                Xóa
+            </button>
+        </td>
+    </tr>
+    <?php
+}
 ?>
 <!DOCTYPE html>
 <html lang="vi">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title><?php echo $pageTitle; ?></title>
-<script src="https://cdn.tailwindcss.com"></script>
-<script>
-  // header.php/sidebar.php dùng các class bg-primary/text-primary — Tailwind CDN
-  // không có sẵn màu "primary", nên khai báo ở đây để 2 component hiện đúng màu.
-  tailwind.config = {
-    theme: {
-      extend: {
-        colors: {
-          primary: '#0284c7', // đổi theo màu thương hiệu thật của Stackers
-        }
-      }
-    }
-  }
-</script>
-<style>
-  body { font-family: Arial, Helvetica, sans-serif; }
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stackers - Thiết lập công thức tính điểm</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: { extend: { colors: { primary: '#1d4ed8' }, fontFamily: { roboto: ['Roboto', 'sans-serif'] } } }
+        };
+    </script>
 </head>
-<body class="bg-gray-100 text-gray-900">
+<body class="bg-slate-50 text-slate-800">
+<?php
+renderHeader();
+renderSidebar();
+?>
 
-  <?php renderHeader(); ?>
-  <?php renderSidebar(); ?>
+<main class="pl-72 pt-20">
+    <div class="mx-auto max-w-4xl px-6 py-8">
 
-  <!--
-    Header là "fixed h-20" và sidebar là "fixed w-72 top-20" (xem components/layout),
-    nên nội dung chính phải chừa khoảng trống bằng đúng 2 kích thước đó,
-    nếu không nội dung sẽ bị header/sidebar đè lên trên.
-    pt-20   = chừa chỗ cho header (cao 5rem = 20 đơn vị Tailwind)
-    lg:pl-72 = chừa chỗ cho sidebar (rộng 18rem = 72 đơn vị Tailwind), chỉ áp dụng
-               từ màn hình lg trở lên vì sidebar ẩn trên mobile.
-  -->
-  <main class="pt-20 lg:pl-72">
-    <div class="max-w-5xl mx-auto p-6">
-
-      <!-- Breadcrumb -->
-      <div class="text-sm text-gray-500 mb-2">
-        Sở GD&ĐT &nbsp;/&nbsp; Điểm số &nbsp;/&nbsp; <span class="text-gray-800">Thiết lập công thức tính điểm</span>
-      </div>
-
-      <!-- Page header -->
-      <div class="flex items-start justify-between mb-6">
-        <div>
-          <h1 class="text-xl font-semibold">Thiết lập công thức tính điểm</h1>
-          <p class="text-sm text-gray-500 mt-1">
-            Cấu hình hệ số môn thi và các mức điểm ưu tiên / khuyến khích áp dụng cho kỳ tuyển sinh hiện tại.
-          </p>
-        </div>
-        <span class="text-xs border border-gray-400 px-2 py-1 rounded">
-          Kỳ tuyển sinh: 2026 - 2027
-        </span>
-      </div>
-
-      <!-- Error banner (ẩn mặc định, hiện khi dữ liệu không hợp lệ) -->
-      <div id="thongBaoLoi" class="hidden mb-4 border border-gray-500 bg-gray-100 px-4 py-3 rounded">
-        <p class="text-sm font-medium">Không thể lưu công thức</p>
-        <p id="noiDungLoi" class="text-sm text-gray-600 mt-1">Vui lòng kiểm tra lại hệ số và điểm ưu tiên đã nhập.</p>
-      </div>
-
-      <form id="formCongThuc" class="space-y-6" novalidate>
-
-        <!-- Khối 1: Hệ số môn thi -->
-        <section class="bg-white border border-gray-300 rounded">
-          <div class="px-5 py-3 border-b border-gray-300 flex items-center justify-between">
-            <h2 class="font-medium">Hệ số môn thi</h2>
-            <div class="text-right">
-              <span class="text-xs text-gray-500">Tổng hệ số hiện tại: <span id="tongHeSoHienThi" class="font-semibold"><?php echo $tongHeSo; ?></span></span>
-              <p id="loiTongHeSo" class="hidden text-red-600 text-xs mt-1"></p>
+        <!-- Breadcrumb + tiêu đề -->
+        <p class="mb-2 text-sm text-slate-500">
+            Sở GD&amp;ĐT &nbsp;/&nbsp; Điểm số &nbsp;/&nbsp;
+            <span class="text-slate-800">Thiết lập công thức tính điểm</span>
+        </p>
+        <div class="mb-6 flex flex-wrap items-start justify-between gap-3">
+            <div>
+                <h1 class="text-2xl font-bold">Thiết lập công thức tính điểm</h1>
+                <p class="mt-1 text-sm text-slate-500">
+                    Cấu hình hệ số các môn thi và các tiêu chuẩn cộng điểm ưu tiên / khuyến khích
+                    áp dụng cho kỳ tuyển sinh hiện tại.
+                </p>
             </div>
-          </div>
-
-          <table class="w-full text-sm">
-            <thead>
-              <tr class="text-left text-gray-500 border-b border-gray-200">
-                <th class="px-5 py-2 font-normal">Môn thi</th>
-                <th class="px-5 py-2 font-normal w-40">Hệ số</th>
-                <th class="px-5 py-2 font-normal">Ghi chú</th>
-              </tr>
-            </thead>
-            <tbody>
-              <?php foreach ($monThi as $i => $mon): ?>
-              <tr class="border-b border-gray-100 last:border-b-0">
-                <td class="px-5 py-3"><?php echo htmlspecialchars($mon['ten']); ?></td>
-                <td class="px-5 py-3">
-                  <input
-                    type="number"
-                    step="0.5"
-                    min="0"
-                    name="heSo[<?php echo $mon['ma']; ?>]"
-                    value="<?php echo $mon['heSo']; ?>"
-                    data-ten-mon="<?php echo htmlspecialchars($mon['ten']); ?>"
-                    class="hesoInput w-24 border border-gray-400 rounded px-2 py-1"
-                  >
-                  <p class="loiHeSoDong hidden text-red-600 text-xs mt-1"></p>
-                </td>
-                <td class="px-5 py-3 text-gray-400">Hệ số nhân với điểm thi môn <?php echo htmlspecialchars($mon['ten']); ?></td>
-              </tr>
-              <?php endforeach; ?>
-            </tbody>
-          </table>
-
-          <div class="px-5 py-3 border-t border-gray-200 text-xs text-gray-500">
-            Lưu ý: tổng hệ số phải khớp với quy định của kỳ tuyển sinh (ví dụ: 5) và không được nhập giá trị âm.
-          </div>
-        </section>
-
-        <!-- Khối 2: Điểm ưu tiên / khuyến khích -->
-        <section class="bg-white border border-gray-300 rounded">
-          <div class="px-5 py-3 border-b border-gray-300 flex items-center justify-between">
-            <h2 class="font-medium">Điểm ưu tiên / khuyến khích</h2>
-            <button type="button" id="btnThemTieuChuan" class="text-sm border border-gray-400 rounded px-3 py-1">
-              + Thêm tiêu chuẩn
-            </button>
-          </div>
-
-          <table class="w-full text-sm">
-            <thead>
-              <tr class="text-left text-gray-500 border-b border-gray-200">
-                <th class="px-5 py-2 font-normal">Đối tượng áp dụng</th>
-                <th class="px-5 py-2 font-normal w-40">Mức điểm</th>
-                <th class="px-5 py-2 font-normal w-16"></th>
-              </tr>
-            </thead>
-            <tbody id="dsTieuChuan">
-              <?php foreach ($tieuChiUuTien as $i => $tc): ?>
-              <tr class="border-b border-gray-100 last:border-b-0">
-                <td class="px-5 py-3">
-                  <input
-                    type="text"
-                    name="tieuChi[<?php echo $i; ?>][ten]"
-                    value="<?php echo htmlspecialchars($tc['ten']); ?>"
-                    class="w-full border border-gray-400 rounded px-2 py-1"
-                  >
-                </td>
-                <td class="px-5 py-3">
-                  <input
-                    type="number"
-                    step="0.25"
-                    min="0"
-                    name="tieuChi[<?php echo $i; ?>][diem]"
-                    value="<?php echo $tc['diem']; ?>"
-                    class="tieuChiDiemInput w-24 border border-gray-400 rounded px-2 py-1"
-                  >
-                  <p class="loiTieuChiDong hidden text-red-600 text-xs mt-1"></p>
-                </td>
-                <td class="px-5 py-3 text-right">
-                  <button type="button" class="btnXoaTieuChuan text-gray-400 text-sm">Xóa</button>
-                </td>
-              </tr>
-              <?php endforeach; ?>
-            </tbody>
-          </table>
-        </section>
-
-        <!-- Khối 3: hành động -->
-        <div class="flex items-center justify-end gap-3">
-          <button type="button" class="border border-gray-400 rounded px-4 py-2 text-sm">
-            Hủy
-          </button>
-          <button type="submit" class="border border-gray-900 bg-gray-900 text-white rounded px-4 py-2 text-sm">
-            Lưu công thức tính điểm
-          </button>
+            <span class="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+                Kỳ tuyển sinh: <?= $ky !== null ? h((string) $ky['namtuyensinh']) : $namHienTai ?>
+            </span>
         </div>
 
-      </form>
+        <!-- Thông báo kết quả lưu hiển thị ở modal #modalKetQua (cuối trang) -->
 
+        <?php if ($ky === null): ?>
+            <div class="rounded-2xl border border-amber-300 bg-amber-50 px-5 py-4 text-sm text-amber-900">
+                Hệ thống chưa có kỳ tuyển sinh của năm <?= $namHienTai ?>. Vui lòng tạo kỳ tuyển sinh trước khi thiết lập công thức.
+            </div>
+        <?php elseif (empty($dsMon)): ?>
+            <div class="rounded-2xl border border-amber-300 bg-amber-50 px-5 py-4 text-sm text-amber-900">
+                Chưa có môn thi nào được khai báo cho kỳ tuyển sinh này.
+            </div>
+        <?php else: ?>
+
+        <?php if ($daCoCongThuc && $trangThai === null && $thongBaoThanhCong === ''): ?>
+            <p class="mb-4 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600">
+                Kỳ tuyển sinh này đã có công thức tính điểm. Bạn có thể chỉnh sửa rồi chọn "Lưu công thức".
+            </p>
+        <?php endif; ?>
+
+        <form id="formCongThuc" method="post" action="" class="space-y-6" novalidate>
+            <input type="hidden" name="csrf" value="<?= h($_SESSION['csrf']) ?>">
+
+            <!-- Khối 1: hệ số môn thi -->
+            <section class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <div class="border-b border-slate-200 px-5 py-3">
+                    <h2 class="font-semibold">Hệ số môn thi</h2>
+                    <p class="mt-0.5 text-xs text-slate-500">Hệ số phải lớn hơn 0 (tối đa 2 chữ số thập phân).</p>
+                </div>
+                <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                    <tr class="border-b border-slate-100 text-left text-slate-500">
+                        <th class="px-5 py-2 font-medium">Môn thi</th>
+                        <th class="w-40 px-5 py-2 font-medium">Hệ số</th>
+                        <th class="px-5 py-2 font-medium">Ghi chú</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <?php foreach ($dsMon as $mon):
+                        $ma  = (string) $mon['mamonhoc'];
+                        $loi = $loiTheoOTruong["heSo.$ma"] ?? [];
+                        ?>
+                        <tr class="border-b border-slate-100 align-top last:border-b-0">
+                            <td class="px-5 py-3 font-medium"><?= h($mon['tenmonhoc']) ?></td>
+                            <td class="px-5 py-3">
+                                <input type="text" inputmode="decimal" name="heSo[<?= h($ma) ?>]"
+                                       value="<?= h($giaTriHeSo[$ma]) ?>"
+                                       data-ten-mon="<?= h($mon['tenmonhoc']) ?>"
+                                       class="js-he-so w-24 rounded-lg border px-3 py-2 <?= $loi ? 'border-red-400 bg-red-50' : 'border-slate-300 bg-white' ?>">
+                                <p class="js-loi mt-1 text-xs text-red-600 <?= $loi ? '' : 'hidden' ?>"><?= h($loi[0] ?? '') ?></p>
+                            </td>
+                            <td class="px-5 py-3 text-slate-400">Điểm thi môn <?= h($mon['tenmonhoc']) ?> nhân với hệ số</td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+                </div>
+                <div class="border-t border-slate-100 bg-slate-50 px-5 py-3 text-xs text-slate-600">
+                    Công thức: <span id="congThucXemTruoc" class="font-semibold text-slate-800"></span>
+                </div>
+            </section>
+
+            <!-- Khối 2: tiêu chuẩn cộng điểm -->
+            <section class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <div class="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+                    <div>
+                        <h2 class="font-semibold">Tiêu chuẩn cộng điểm ưu tiên / khuyến khích</h2>
+                        <p class="mt-0.5 text-xs text-slate-500">
+                            Điều kiện áp dụng không được trống và không trùng tiêu chuẩn khác cùng loại; mức điểm cộng phải lớn hơn 0.
+                        </p>
+                    </div>
+                    <button type="button" id="btnThemTieuChuan"
+                            class="shrink-0 rounded-lg border border-blue-600 px-3 py-1.5 text-sm font-medium text-blue-700 transition hover:bg-blue-50">
+                        + Thêm tiêu chuẩn
+                    </button>
+                </div>
+                <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                    <tr class="border-b border-slate-100 text-left text-slate-500">
+                        <th class="w-44 px-4 py-2 font-medium sm:px-5">Loại</th>
+                        <th class="px-4 py-2 font-medium sm:px-5">Điều kiện áp dụng</th>
+                        <th class="w-32 px-4 py-2 font-medium sm:px-5">Điểm cộng</th>
+                        <th class="w-20 px-4 py-2 sm:px-5"></th>
+                    </tr>
+                    </thead>
+                    <tbody id="dsTieuChuan">
+                    <?php foreach ($dongTieuChuan as $idx => $tc) { renderDongTieuChuan((string) $idx, $tc, $loiTheoOTruong); } ?>
+                    </tbody>
+                </table>
+                </div>
+                <p id="khongCoTieuChuan"
+                   class="px-5 py-6 text-center text-sm text-slate-400 <?= $dongTieuChuan ? 'hidden' : '' ?>">
+                    Chưa có tiêu chuẩn nào. Chọn "+ Thêm tiêu chuẩn" để thêm.
+                </p>
+            </section>
+
+            <div class="flex items-center justify-end gap-3">
+                <a href="<?= h(strtok($_SERVER['REQUEST_URI'], '?')) ?>"
+                   class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+                    Hủy thay đổi
+                </a>
+                <button type="submit" id="btnLuu"
+                        class="rounded-lg bg-blue-700 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-800 disabled:opacity-60">
+                    Lưu công thức
+                </button>
+            </div>
+        </form>
+
+        <!-- Mẫu dòng tiêu chuẩn mới -->
+        <template id="tplTieuChuan">
+            <?php renderDongTieuChuan('__IDX__', ['ma' => '', 'loai' => 'UU_TIEN', 'dieuKien' => '', 'diemCong' => ''], []); ?>
+        </template>
+
+        <?php endif; ?>
     </div>
-  </main>
+</main>
 
-  <!-- Modal: Lưu thành công (ẩn mặc định) -->
-  <div id="modalThanhCong" class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
-    <div class="bg-white border border-gray-400 rounded w-full max-w-sm mx-4">
-      <div class="px-5 py-4 border-b border-gray-300 flex items-center justify-between">
-        <h3 class="font-medium">Thiết lập thành công</h3>
-        <button type="button" onclick="dongModalThanhCong()" class="text-gray-400 text-sm">✕</button>
-      </div>
-      <div class="px-5 py-4 text-sm text-gray-700">
-        Công thức tính điểm đã được lưu và áp dụng cho kỳ tuyển sinh hiện tại.
-      </div>
-      <div class="px-5 py-4 border-t border-gray-200 flex justify-end">
-        <button type="button" onclick="dongModalThanhCong()" class="border border-gray-900 bg-gray-900 text-white rounded px-4 py-2 text-sm">
-          Đóng
-        </button>
-      </div>
+<!-- Modal kết quả: thành công (bước 7) / dữ liệu không hợp lệ (5.1) / lỗi hệ thống (6.1) -->
+<div id="modalKetQua"
+     class="fixed inset-0 z-[1000] flex items-center justify-center bg-slate-900/50 px-4 <?= $modal ? '' : 'hidden' ?>"
+     role="dialog" aria-modal="true" aria-labelledby="modalTieuDe">
+    <div class="w-full max-w-md rounded-2xl bg-white shadow-2xl">
+        <div class="px-6 pb-2 pt-7 text-center">
+            <div id="modalIconThanhCong"
+                 class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-green-100 text-green-600 <?= ($modal['loai'] ?? '') === 'thanh_cong' ? '' : 'hidden' ?>">
+                <svg class="h-7 w-7" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+            </div>
+            <div id="modalIconLoi"
+                 class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-red-100 text-red-600 <?= ($modal['loai'] ?? 'loi') === 'loi' ? '' : 'hidden' ?>">
+                <svg class="h-7 w-7" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v5m0 3.5h.01M10.3 3.9L2.4 17.6A2 2 0 004.1 20.5h15.8a2 2 0 001.7-2.9L13.7 3.9a2 2 0 00-3.4 0z"/></svg>
+            </div>
+            <h3 id="modalTieuDe" class="mt-4 text-lg font-bold text-slate-800"><?= h($modal['tieuDe'] ?? '') ?></h3>
+            <div id="modalNoiDung" class="mt-2 max-h-60 overflow-y-auto text-sm text-slate-600">
+                <?php if ($modal && $modal['dong']): ?>
+                    <?php if ($modal['loai'] === 'thanh_cong'): ?>
+                        <p><?= h($modal['dong'][0]) ?></p>
+                    <?php else: ?>
+                        <ul class="list-disc space-y-1 pl-5 text-left">
+                            <?php foreach ($modal['dong'] as $dong): ?><li><?= h($dong) ?></li><?php endforeach; ?>
+                        </ul>
+                    <?php endif; ?>
+                <?php endif; ?>
+            </div>
+        </div>
+        <div class="px-6 pb-6 pt-4">
+            <button type="button" id="modalDong"
+                    class="w-full rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+                Đóng
+            </button>
+        </div>
     </div>
-  </div>
+</div>
 
-  <script>
-    const tongEl = document.getElementById('tongHeSoHienThi');
-    const loiTongHeSoEl = document.getElementById('loiTongHeSo');
-    const HE_SO_QUY_DINH = 5; // tổng hệ số chuẩn theo quy định kỳ tuyển sinh (dùng để đối chiếu)
-    let demTieuChuanMoi = 0;
+<script>
+// Modal kết quả dùng chung: server mở sẵn khi có thông báo, JS gọi hienModal() khi kiểm tra phía client thất bại.
+(() => {
+    const modal = document.getElementById('modalKetQua');
+    const btnDong = document.getElementById('modalDong');
+    let focusTruoc = null;
 
-    function layDanhSachInputHeSo() {
-      return document.querySelectorAll('.hesoInput');
-    }
+    window.hienModal = function (loai, tieuDe, dong) {
+        const thanhCong = loai === 'thanh_cong';
+        document.getElementById('modalIconThanhCong').classList.toggle('hidden', !thanhCong);
+        document.getElementById('modalIconLoi').classList.toggle('hidden', thanhCong);
+        document.getElementById('modalTieuDe').textContent = tieuDe;
 
-    // Kiểm tra thời gian thực cho 1 ô hệ số
-    function kiemTraHeSoDong(input) {
-      const p = input.nextElementSibling; // .loiHeSoDong
-      const giaTri = parseFloat(input.value);
-      if (isNaN(giaTri) || giaTri < 0) {
-        p.textContent = `Hệ số môn ${input.dataset.tenMon} không được là số âm.`;
-        p.classList.remove('hidden');
-      } else {
-        p.classList.add('hidden');
-      }
-    }
-
-    function tinhTongHeSo() {
-      let tong = 0;
-      layDanhSachInputHeSo().forEach(inp => tong += parseFloat(inp.value || 0));
-      tongEl.textContent = tong;
-
-      if (tong !== HE_SO_QUY_DINH) {
-        loiTongHeSoEl.textContent = `Tổng hệ số hiện tại là ${tong}, chưa khớp với quy định (${HE_SO_QUY_DINH}).`;
-        loiTongHeSoEl.classList.remove('hidden');
-      } else {
-        loiTongHeSoEl.classList.add('hidden');
-      }
-      return tong;
-    }
-
-    layDanhSachInputHeSo().forEach(inp => {
-      inp.addEventListener('input', () => {
-        kiemTraHeSoDong(inp);
-        tinhTongHeSo();
-      });
-    });
-
-    // Kiểm tra thời gian thực cho 1 ô mức điểm ưu tiên
-    function kiemTraTieuChiDong(input) {
-      const p = input.nextElementSibling; // .loiTieuChiDong
-      const giaTri = parseFloat(input.value);
-      if (isNaN(giaTri) || giaTri < 0) {
-        p.textContent = 'Mức điểm không được là số âm.';
-        p.classList.remove('hidden');
-      } else {
-        p.classList.add('hidden');
-      }
-    }
-
-    // Gắn sự kiện thời gian thực cho cả dòng có sẵn lẫn dòng thêm sau này (event delegation)
-    document.getElementById('dsTieuChuan').addEventListener('input', function (e) {
-      if (e.target.classList.contains('tieuChiDiemInput')) {
-        kiemTraTieuChiDong(e.target);
-      }
-    });
-
-    // Thêm tiêu chuẩn ưu tiên/khuyến khích mới
-    document.getElementById('btnThemTieuChuan').addEventListener('click', function () {
-      demTieuChuanMoi++;
-      const tbody = document.getElementById('dsTieuChuan');
-      const tr = document.createElement('tr');
-      tr.className = 'border-b border-gray-100 last:border-b-0';
-      tr.innerHTML = `
-        <td class="px-5 py-3">
-          <input type="text" name="tieuChiMoi[${demTieuChuanMoi}][ten]" placeholder="Nhập đối tượng áp dụng"
-                 class="w-full border border-gray-400 rounded px-2 py-1">
-        </td>
-        <td class="px-5 py-3">
-          <input type="number" step="0.25" min="0" name="tieuChiMoi[${demTieuChuanMoi}][diem]" value="0"
-                 class="tieuChiDiemInput w-24 border border-gray-400 rounded px-2 py-1">
-          <p class="loiTieuChiDong hidden text-red-600 text-xs mt-1"></p>
-        </td>
-        <td class="px-5 py-3 text-right">
-          <button type="button" class="btnXoaTieuChuan text-gray-400 text-sm">Xóa</button>
-        </td>
-      `;
-      tbody.appendChild(tr);
-    });
-
-    // Xóa một dòng tiêu chuẩn (gắn cho cả dòng có sẵn và dòng thêm mới)
-    document.getElementById('dsTieuChuan').addEventListener('click', function (e) {
-      if (e.target.classList.contains('btnXoaTieuChuan')) {
-        e.target.closest('tr').remove();
-      }
-    });
-
-    function moModalThanhCong() {
-      document.getElementById('modalThanhCong').classList.remove('hidden');
-    }
-    function dongModalThanhCong() {
-      document.getElementById('modalThanhCong').classList.add('hidden');
-    }
-
-    document.getElementById('formCongThuc').addEventListener('submit', function (e) {
-      e.preventDefault();
-
-      const loi = document.getElementById('thongBaoLoi');
-      const noiDungLoi = document.getElementById('noiDungLoi');
-      const danhSachLoi = [];
-
-      // Kiểm tra hệ số âm theo từng môn
-      layDanhSachInputHeSo().forEach(inp => {
-        if (parseFloat(inp.value) < 0) {
-          danhSachLoi.push(`Hệ số môn ${inp.dataset.tenMon} không được là số âm.`);
+        const noiDung = document.getElementById('modalNoiDung');
+        noiDung.innerHTML = '';
+        if (dong && dong.length) {
+            if (thanhCong) {
+                const p = document.createElement('p'); p.textContent = dong[0]; noiDung.appendChild(p);
+            } else {
+                const ul = document.createElement('ul');
+                ul.className = 'list-disc space-y-1 pl-5 text-left';
+                dong.forEach(m => { const li = document.createElement('li'); li.textContent = m; ul.appendChild(li); });
+                noiDung.appendChild(ul);
+            }
         }
-      });
+        focusTruoc = document.activeElement;
+        modal.classList.remove('hidden');
+        btnDong.focus();
+    };
 
-      // Kiểm tra tổng hệ số so với quy định
-      const tong = tinhTongHeSo();
-      if (tong !== HE_SO_QUY_DINH) {
-        danhSachLoi.push(`Tổng hệ số hiện tại là ${tong}, chưa khớp với quy định (${HE_SO_QUY_DINH}).`);
-      }
+    function dongModal() {
+        modal.classList.add('hidden');
+        if (focusTruoc && focusTruoc.focus) focusTruoc.focus();
+    }
 
-      // Kiểm tra điểm ưu tiên âm hoặc thiếu tên đối tượng
-      document.querySelectorAll('#dsTieuChuan tr').forEach(tr => {
-        const inputs = tr.querySelectorAll('input');
-        const ten = inputs[0].value.trim();
-        const diem = parseFloat(inputs[1].value);
-        if (ten === '') {
-          danhSachLoi.push('Có tiêu chuẩn chưa nhập đối tượng áp dụng.');
-        }
-        if (diem < 0) {
-          danhSachLoi.push(`Mức điểm cho "${ten || 'tiêu chuẩn chưa đặt tên'}" không được là số âm.`);
-        }
-      });
+    btnDong.addEventListener('click', dongModal);
+    modal.addEventListener('click', e => { if (e.target === modal) dongModal(); });   // bấm ra ngoài để đóng
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && !modal.classList.contains('hidden')) dongModal(); });
 
-      if (danhSachLoi.length > 0) {
-        noiDungLoi.innerHTML = danhSachLoi.join('<br>');
-        loi.classList.remove('hidden');
-      } else {
-        loi.classList.add('hidden');
-        moModalThanhCong();
-      }
+    if (!modal.classList.contains('hidden')) btnDong.focus();
+})();
+</script>
+
+<?php if ($choPhepNhap): ?>
+<script>
+(() => {
+    const MAX = 99.99;
+    const form = document.getElementById('formCongThuc');
+    const tbody = document.getElementById('dsTieuChuan');
+    const tpl = document.getElementById('tplTieuChuan');
+    const trong = document.getElementById('khongCoTieuChuan');
+    let idxTiepTheo = <?= (int) $idxTiepTheo ?>;
+
+    // ---- Quy tắc kiểm tra: phản chiếu CtrlThietLapCongThuc::kiemTraHopLe (server vẫn kiểm tra lại) ----
+    function kiemTraSo(raw, nhan) {
+        const v = raw.trim().replace(',', '.');
+        if (v === '') return nhan + ' không được để trống.';
+        if (!/^-?\d+(\.\d+)?$/.test(v)) return nhan + ' phải là một số.';
+        if (v[0] === '-' || parseFloat(v) <= 0) return nhan + ' phải lớn hơn 0.';
+        if (!/^\d+(\.\d{1,2})?$/.test(v)) return nhan + ' chỉ được có tối đa 2 chữ số thập phân.';
+        if (parseFloat(v) > MAX) return nhan + ' không được lớn hơn ' + MAX + '.';
+        return null;
+    }
+    const chuanHoaChu = s => s.replace(/\s+/g, ' ').trim();
+
+    function datLoi(input, msg) {
+        const p = input.parentElement.querySelector('.js-loi');
+        const co = !!msg;
+        if (p) { p.textContent = msg || ''; p.classList.toggle('hidden', !co); }
+        input.classList.toggle('border-red-400', co);
+        input.classList.toggle('bg-red-50', co);
+        input.classList.toggle('border-slate-300', !co);
+        input.classList.toggle('bg-white', !co);
+    }
+
+    function kiemTraHeSo(input) {
+        const msg = kiemTraSo(input.value, 'Hệ số môn ' + input.dataset.tenMon);
+        datLoi(input, msg);
+        return msg;
+    }
+
+    // Kiểm tra toàn bộ tiêu chuẩn, trả về danh sách thông báo (đồng thời gắn lỗi vào từng ô)
+    function kiemTraTatCaTieuChuan() {
+        const loi = [];
+        const daGap = new Map();
+        [...tbody.querySelectorAll('.js-dong-tieu-chuan')].forEach((tr, i) => {
+            const nhan = 'Tiêu chuẩn #' + (i + 1);
+            const loai = tr.querySelector('.js-loai');
+            const dk = tr.querySelector('.js-dieu-kien');
+            const diem = tr.querySelector('.js-diem-cong');
+
+            let m = null;
+            const ten = chuanHoaChu(dk.value);
+            if (ten === '') m = nhan + ': điều kiện áp dụng không được để trống.';
+            else {
+                const khoa = loai.value + '|' + ten.toLocaleLowerCase('vi');
+                if (daGap.has(khoa)) m = nhan + ': điều kiện "' + ten + '" bị trùng với tiêu chuẩn #' + daGap.get(khoa) + ' (cùng loại).';
+                else daGap.set(khoa, i + 1);
+            }
+            datLoi(dk, m); if (m) loi.push(m);
+
+            m = kiemTraSo(diem.value, nhan + ': mức điểm cộng');
+            datLoi(diem, m); if (m) loi.push(m);
+        });
+        return loi;
+    }
+
+    // ---- Công thức xem trước ----
+    function capNhatCongThuc() {
+        const phan = [...form.querySelectorAll('.js-he-so')].map(inp => {
+            const v = inp.value.trim().replace(',', '.');
+            return inp.dataset.tenMon + ' × ' + (/^\d+(\.\d+)?$/.test(v) ? parseFloat(v) : '?');
+        });
+        document.getElementById('congThucXemTruoc').textContent =
+            'Tổng điểm = ' + phan.join(' + ') + ' + điểm cộng ưu tiên / khuyến khích';
+    }
+
+    function capNhatTrong() {
+        trong.classList.toggle('hidden', tbody.querySelector('.js-dong-tieu-chuan') !== null);
+    }
+
+    // ---- Sự kiện ----
+    form.querySelectorAll('.js-he-so').forEach(inp =>
+        inp.addEventListener('input', () => { kiemTraHeSo(inp); capNhatCongThuc(); }));
+
+    tbody.addEventListener('input', e => {
+        if (e.target.matches('.js-dieu-kien, .js-diem-cong, .js-loai')) kiemTraTatCaTieuChuan();
     });
-  </script>
+    tbody.addEventListener('change', e => {
+        if (e.target.matches('.js-loai')) kiemTraTatCaTieuChuan();
+    });
+    tbody.addEventListener('click', e => {
+        const btn = e.target.closest('.js-xoa');
+        if (!btn) return;
+        btn.closest('tr').remove();
+        capNhatTrong();
+        kiemTraTatCaTieuChuan();
+    });
+
+    document.getElementById('btnThemTieuChuan').addEventListener('click', () => {
+        const html = tpl.innerHTML.replaceAll('__IDX__', 'n' + (idxTiepTheo++));
+        tbody.insertAdjacentHTML('beforeend', html);
+        capNhatTrong();
+        tbody.lastElementChild.querySelector('.js-dieu-kien').focus();
+    });
+
+    form.addEventListener('submit', e => {
+        const loi = [];
+        form.querySelectorAll('.js-he-so').forEach(inp => { const m = kiemTraHeSo(inp); if (m) loi.push(m); });
+        loi.push(...kiemTraTatCaTieuChuan());
+
+        if (loi.length > 0) {
+            e.preventDefault();
+            hienModal('loi', 'Không thể lưu công thức. Vui lòng kiểm tra lại:', loi);
+            return;
+        }
+        document.getElementById('btnLuu').disabled = true;   // tránh bấm lưu hai lần
+    });
+
+    capNhatCongThuc();
+})();
+</script>
+<?php endif; ?>
 
 </body>
 </html>
