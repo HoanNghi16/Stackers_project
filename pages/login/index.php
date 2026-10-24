@@ -1,32 +1,29 @@
 <?php
-// Bắt đầu session nếu muốn chuyển sang xử lý backend bằng PHP sau này
-session_start();
-require __DIR__."../../../class/dang-nhap.php";
-require "../../index.php";
+    session_start();
+    require __DIR__."../../../class/dang-nhap.php";
+    require "../../index.php";
 ?>
-
 <?php
+    function chuyenHuongTheoVaiTro() {
+        if (!isset($_SESSION['vaitro'])) return;
 
-    if (isset($_SESSION['vaitro'])){
-        if ($_SESSION['vaitro']== 'HOC_SINH'){
-            header("Location: ../hoc-sinh");
-        }
-        if ($_SESSION['vaitro']== 'THPT'){
-            header("Location: ../thpt");
-        }
-        if ($_SESSION['vaitro']== 'THCS'){
-            header("Location: ../thcs");
-        }
-        if ($_SESSION['vaitro']== 'SO_GD'){
-            header("Location: ../so-gd");
+        switch ($_SESSION['vaitro']) {
+            case 'HOC_SINH': header("Location: ../hoc-sinh"); exit;
+            case 'THPT':     header("Location: ../thpt");     exit;
+            case 'THCS':     header("Location: ../thcs");     exit;
+            case 'SO_GD':    header("Location: ../so-gd");    exit;
         }
     }
 
+    // Đã đăng nhập từ trước thì chuyển luôn
+    chuyenHuongTheoVaiTro();
+    $result = true;
     if (isset($_POST['dang-nhap'])){
         $email = $_POST['email'];
         $password = $_POST['password'];
         $ctrl = new CtrlDangNhap($conn);
-        $ctrl->DangNhap($email, $password);
+        $result = $ctrl->DangNhap($email, $password);
+        chuyenHuongTheoVaiTro();
     }
 
 ?>
@@ -84,9 +81,16 @@ require "../../index.php";
             </div>
 
             <!-- HIỂN THỊ LỖI (Alternative Flows) -->
-            <div id="login-error" class="hidden mb-5 p-4 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
-                <!-- Nội dung thông báo lỗi động -->
-            </div>
+            <?php 
+                if (is_string($result)){
+                    echo '
+                        <div id="login-error" class="mb-5 p-4 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+                            '.$result.'
+                        </div>
+                    ';
+                }
+            ?>
+
 
             <!-- BUTTON ĐĂNG NHẬP -->
             <button 
@@ -123,95 +127,95 @@ require "../../index.php";
 
 <script>
 // Danh sách tài khoản mẫu kết nối tương ứng với cây thư mục dự án
-const mockUsers = [
-    { 
-        username: 'nguyenvanan@gmail.com', 
-        password: '123', 
-        role: 'Sở GD&ĐT', 
-        redirectUrl: '../so-gd/quan-ly-tai-khoan/index.php',
-        status: 'active' 
-    },
-    { 
-        username: 'tranthibinh@gmail.com', 
-        password: '123', 
-        role: 'Trường THCS', 
-        redirectUrl: '../thcs/quan-ly-hs-thi-sinh/index.php',
-        status: 'active' 
-    },
-    { 
-        username: 'levancuong@gmail.com', 
-        password: '123', 
-        role: 'Trường THPT', 
-        redirectUrl: '../thpt/dang-ky-chi-tieu/index.php', 
-        status: 'active' 
-    },
-    { 
-        username: 'phamminhdung', 
-        password: '123', 
-        role: 'Học sinh', 
-        redirectUrl: '../hoc-sinh/xem-ds-diem-thi/index.php',
-        status: 'active' 
-    },
-    { 
-        username: 'locked_user', 
-        password: '123', 
-        role: 'Học sinh', 
-        status: 'locked' // Tài khoản mẫu để test lỗi khóa tài khoản (Alternative 4.3)
-    }
-];
+// const mockUsers = [
+//     { 
+//         username: 'nguyenvanan@gmail.com', 
+//         password: '123', 
+//         role: 'Sở GD&ĐT', 
+//         redirectUrl: '../so-gd/quan-ly-tai-khoan/index.php',
+//         status: 'active' 
+//     },
+//     { 
+//         username: 'tranthibinh@gmail.com', 
+//         password: '123', 
+//         role: 'Trường THCS', 
+//         redirectUrl: '../thcs/quan-ly-hs-thi-sinh/index.php',
+//         status: 'active' 
+//     },
+//     { 
+//         username: 'levancuong@gmail.com', 
+//         password: '123', 
+//         role: 'Trường THPT', 
+//         redirectUrl: '../thpt/dang-ky-chi-tieu/index.php', 
+//         status: 'active' 
+//     },
+//     { 
+//         username: 'phamminhdung', 
+//         password: '123', 
+//         role: 'Học sinh', 
+//         redirectUrl: '../hoc-sinh/xem-ds-diem-thi/index.php',
+//         status: 'active' 
+//     },
+//     { 
+//         username: 'locked_user', 
+//         password: '123', 
+//         role: 'Học sinh', 
+//         status: 'locked' // Tài khoản mẫu để test lỗi khóa tài khoản (Alternative 4.3)
+//     }
+// ];
 
-function handleLogin(event) {
-    event.preventDefault();
+// function handleLogin(event) {
+//     event.preventDefault();
 
-    const usernameInput = document.getElementById('username').value.trim();
-    const passwordInput = document.getElementById('password').value.trim();
-    const errorDiv = document.getElementById('login-error');
+//     const usernameInput = document.getElementById('username').value.trim();
+//     const passwordInput = document.getElementById('password').value.trim();
+//     const errorDiv = document.getElementById('login-error');
 
-    // Ẩn thông báo lỗi cũ
-    errorDiv.classList.add('hidden');
+//     // Ẩn thông báo lỗi cũ
+//     errorDiv.classList.add('hidden');
 
-    // Tìm kiếm thông tin người dùng
-    const user = mockUsers.find(u => u.username === usernameInput);
+//     // Tìm kiếm thông tin người dùng
+//     const user = mockUsers.find(u => u.username === usernameInput);
 
-    // Alternative 4.1: Không tìm thấy thông tin người dùng
-    if (!user) {
-        errorDiv.textContent = 'Tên đăng nhập không tồn tại.';
-        errorDiv.classList.remove('hidden');
-        return;
-    }
+//     // Alternative 4.1: Không tìm thấy thông tin người dùng
+//     if (!user) {
+//         errorDiv.textContent = 'Tên đăng nhập không tồn tại.';
+//         errorDiv.classList.remove('hidden');
+//         return;
+//     }
 
-    // Alternative 4.3: Tài khoản bị khóa hoặc vô hiệu hóa
-    if (user.status === 'locked') {
-        errorDiv.textContent = 'Tài khoản đã bị khóa hoặc vô hiệu hóa. Vui lòng liên hệ Quản trị viên.';
-        errorDiv.classList.remove('hidden');
-        return;
-    }
+//     // Alternative 4.3: Tài khoản bị khóa hoặc vô hiệu hóa
+//     if (user.status === 'locked') {
+//         errorDiv.textContent = 'Tài khoản đã bị khóa hoặc vô hiệu hóa. Vui lòng liên hệ Quản trị viên.';
+//         errorDiv.classList.remove('hidden');
+//         return;
+//     }
 
-    // Alternative 4.2: Sai mật khẩu
-    if (user.password !== passwordInput) {
-        errorDiv.textContent = 'Sai mật khẩu.';
-        errorDiv.classList.remove('hidden');
-        return;
-    }
+//     // Alternative 4.2: Sai mật khẩu
+//     if (user.password !== passwordInput) {
+//         errorDiv.textContent = 'Sai mật khẩu.';
+//         errorDiv.classList.remove('hidden');
+//         return;
+//     }
 
-    // Basic Flow (Bước 5, 6, 7): Đăng nhập thành công
-    console.log('Lưu lịch sử đăng nhập thành công cho:', user.username);
+//     // Basic Flow (Bước 5, 6, 7): Đăng nhập thành công
+//     console.log('Lưu lịch sử đăng nhập thành công cho:', user.username);
 
-    // Hiển thị toast thông báo thành công
-    const successToast = document.getElementById('success-message');
-    document.getElementById('success-text').textContent = `Đăng nhập thành công (${user.role}). Đang chuyển hướng...`;
-    successToast.classList.remove('hidden');
+//     // Hiển thị toast thông báo thành công
+//     const successToast = document.getElementById('success-message');
+//     document.getElementById('success-text').textContent = `Đăng nhập thành công (${user.role}). Đang chuyển hướng...`;
+//     successToast.classList.remove('hidden');
 
-    // Điều hướng đến đúng trang chủ của từng vai trò sau 1.5 giây
-    setTimeout(() => {
-        window.location.href = user.redirectUrl;
-    }, 1500);
-}
+//     // Điều hướng đến đúng trang chủ của từng vai trò sau 1.5 giây
+//     setTimeout(() => {
+//         window.location.href = user.redirectUrl;
+//     }, 1500);
+// }
 
 // Xử lý Alternative Flow 3.1: Đăng nhập bằng OTP
 function loginWithOTP() {
-    alert('Hệ thống đang chuyển tới Use Case Xác thực OTP...');
-    // window.location.href = '../otp/index.php';
+
+    window.location.href = '../xac-thuc-otp/';
 }
 </script>
 

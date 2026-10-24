@@ -25,16 +25,14 @@
 
             if ($user) {
                 if ($user['matkhau'] != $hashedPassword){
-                    echo "Sai mật khẩu";
-                    return false;
+                    return "Sai mật khẩu";
                 }
                 $_SESSION['manguoidung'] = $user['manguoidung'];
                 $_SESSION['vaitro'] = $user['vaitro'];
                 return true;
             }
 
-            echo "Không tìm thấy người dùng";
-            return false;
+            return "Không tìm thấy người dùng";
         }
 
     }
