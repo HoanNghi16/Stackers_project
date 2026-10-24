@@ -15,7 +15,6 @@
 <body>
     <?php
         renderHeader();
-        renderSidebar()
     ?>
 </body>
 </html>

@@ -1,6 +1,34 @@
 <?php
 // Bắt đầu session nếu muốn chuyển sang xử lý backend bằng PHP sau này
 session_start();
+require __DIR__."../../../class/dang-nhap.php";
+require "../../index.php";
+?>
+
+<?php
+
+    if (isset($_SESSION['vaitro'])){
+        if ($_SESSION['vaitro']== 'HOC_SINH'){
+            header("Location: ../hoc-sinh");
+        }
+        if ($_SESSION['vaitro']== 'THPT'){
+            header("Location: ../thpt");
+        }
+        if ($_SESSION['vaitro']== 'THCS'){
+            header("Location: ../thcs");
+        }
+        if ($_SESSION['vaitro']== 'SO_GD'){
+            header("Location: ../so-gd");
+        }
+    }
+
+    if (isset($_POST['dang-nhap'])){
+        $email = $_POST['email'];
+        $password = $_POST['password'];
+        $ctrl = new CtrlDangNhap($conn);
+        $ctrl->DangNhap($email, $password);
+    }
+
 ?>
 <!DOCTYPE html>
 <html lang="vi">
@@ -13,7 +41,6 @@ session_start();
 <body class="bg-gray-100 min-h-screen flex items-center justify-center">
 
 <div class="max-w-md w-full mx-4">
-    
     <!-- CARD CONTAINER -->
     <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-8">
         
@@ -24,7 +51,7 @@ session_start();
         </div>
 
         <!-- LOGIN FORM -->
-        <form id="login-form" onsubmit="handleLogin(event)">
+        <form id="login-form" method="POST">
             
             <!-- TÊN ĐĂNG NHẬP -->
             <div class="mb-5">
@@ -32,9 +59,10 @@ session_start();
                     Tên đăng nhập <span class="text-red-500">*</span>
                 </label>
                 <input 
-                    id="username"
-                    type="text" 
-                    placeholder="Nhập tên đăng nhập..."
+                    id="email"
+                    type="email" 
+                    name="email"
+                    placeholder="Nhập email..."
                     class="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     required
                 >
@@ -47,6 +75,7 @@ session_start();
                 </label>
                 <input 
                     id="password"
+                    name="password"
                     type="password" 
                     placeholder="••••••••"
                     class="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -61,6 +90,8 @@ session_start();
 
             <!-- BUTTON ĐĂNG NHẬP -->
             <button 
+                id="dang-nhap"
+                name="dang-nhap"
                 type="submit"
                 class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-lg font-medium transition duration-200"
             >
