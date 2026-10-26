@@ -4,6 +4,8 @@
 
         public function __construct($conn){
             $this->conn = $conn;
+
+
         }
 
 
@@ -24,6 +26,24 @@
             }
 
             return $monThi;
+        }
+
+        public function GetLichThi(){
+            $sql = "SELECT * FROM lichthi";
+
+            $result = $this->conn->query($sql);
+
+            if (!$result) {
+                return false;
+            }
+
+            $lichThi = [];
+
+            while ($row = $result->fetch_assoc()) {
+                $lichThi[] = $row;
+            }
+
+            return $lichThi;
         }
 
         public function GetGiaoVienDuocDeCuTheoMaMon($mamon) {
@@ -51,7 +71,33 @@
             return $result->fetch_all(MYSQLI_ASSOC);
         }
 
-        
+        public function GetGiaoVienDuocDeCu(){
+            $sql = "SELECT gv.magiaovien, CONCAT(hs.ho, ' ',hs.ten) as tengiaovien, nd.vaitro as capgiangday, mh.tenmonhoc FROM giaovien gv JOIN hosonguoidung hs
+                        ON gv.manguoidung = hs.manguoidung
+                    JOIN nguoidung nd
+                        ON gv.manguoidung = nd.manguoidung
+                    JOIN monhoc mh
+                        ON gv.mamonhoc = mh.mamonhoc
+                    WHERE duocdecu = 1
+                    AND magiaovien NOT IN (
+                        SELECT magiaovien FROM phancongchamthi
+                        UNION
+                        SELECT magiaovien FROM phancongphuckhao
+                        UNION
+                        SELECT magiaovien FROM phanconggacthi
+                        UNION
+                        SELECT magiaovien FROM phancongrade
+                    )
+                ";
+
+            $stmt = $this->conn->prepare($sql);
+            $stmt->execute();
+
+            $result = $stmt->get_result();
+            return $result->fetch_all(MYSQLI_ASSOC);
+        }
+
+
         public function GetDiaDiemThi() {
             $sql = "SELECT * FROM truonghoc WHERE ladiemthi = 1";
             $result = $this->conn->query($sql);
