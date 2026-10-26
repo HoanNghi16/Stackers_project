@@ -98,8 +98,8 @@
         }
 
 
-        public function GetDiaDiemThi() {
-            $sql = "SELECT * FROM truonghoc WHERE ladiemthi = 1";
+        public function GetDanhSachDiaDiemThi() {
+            $sql = "SELECT tentruong as tendiadiemthi, matruong as madiadiemthi FROM truonghoc WHERE ladiemthi = 1";
             $result = $this->conn->query($sql);
 
             if (!$result) {
@@ -195,6 +195,55 @@
             $stmt->close();
 
             return $result;
+        }
+
+        public function LuuHoiDongGacThi($madiadiemthi, $dsGiaoVien)
+        {
+            $dsLichThi   = [1, 2, 3];
+            $vaiTroHopLe = ['CB', 'DP'];
+        
+            if (empty($dsGiaoVien)) {
+                return false;
+            }
+        
+            $this->conn->begin_transaction();
+        
+            try {
+                $stmt = $this->conn->prepare(
+                    "INSERT INTO phanconggacthi (malichthi, magiaovien, madiadiemthi, vaitro, maphong)
+                    VALUES (?, ?, ?, ?, NULL)"
+                );
+        
+                if (!$stmt) {
+                    throw new Exception($this->conn->error);
+                }
+        
+                foreach ($dsGiaoVien as $magiaovien => $vaitro) {
+                    if (!in_array($vaitro, $vaiTroHopLe, true)) {
+                        throw new InvalidArgumentException("Vai trò không hợp lệ: $vaitro");
+                    }
+        
+                    foreach ($dsLichThi as $malichthi) {
+                        $magv = (string)$magiaovien;
+                        $madd = (string)$madiadiemthi;
+        
+                        $stmt->bind_param('isss', $malichthi, $magv, $madd, $vaitro);
+        
+                        if (!$stmt->execute()) {
+                            throw new Exception($stmt->error);
+                        }
+                    }
+                }
+        
+                $stmt->close();
+                $this->conn->commit();
+                return true;
+            } catch (Throwable $e) {
+                $this->conn->rollback();
+                error_log('LuuHoiDongGacThi: ' . $e->getMessage());
+                echo $e->getMessage();
+                return false;
+            }
         }
 
     }
