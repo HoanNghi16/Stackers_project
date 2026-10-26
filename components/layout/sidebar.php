@@ -1,5 +1,6 @@
 <?php
     function renderSidebar(){
+        
         echo '
             <aside class="fixed left-0 top-20 z-[900] h-[calc(100vh-5rem)] w-72 border-r border-slate-200/70 bg-white/90 px-4 py-6 shadow-lg backdrop-blur-xl">
                 <nav class="space-y-1">
