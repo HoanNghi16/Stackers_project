@@ -1,5 +1,5 @@
-<!-- TRANG CHỦ CỦA NAM -->
 <?php
+    session_start();
     require("../components/layout/header.php");
     require("../components/layout/sidebar.php");
 ?>
@@ -15,7 +15,11 @@
 <body>
     <?php
         renderHeader();
-        renderSidebar()
     ?>
+    <!-- MAIN CONTENT -->
+    <?php
+        require("./danh-sach-truong.php");
+    ?>
+
 </body>
 </html>
