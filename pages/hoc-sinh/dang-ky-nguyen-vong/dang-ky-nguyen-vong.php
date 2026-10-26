@@ -20,6 +20,16 @@ if (
 
 $danhSachTruong = $dangKyNguyenVong->getDanhSachTruong();
 
+$daLuu = [1 => '', 2 => '', 3 => ''];
+for ($thuTu = 1; $thuTu <= 3; $thuTu++) {
+    $daCo = $dangKyNguyenVong->kiemTraNguyenVong(
+        (int) $hocSinh['mahocsinh'],
+        $thuTu
+    );
+    $daLuu[$thuTu] = (string) ($daCo['matruong'] ?? '');
+}
+$daDangKy = $daLuu[1] !== '' || $daLuu[2] !== '' || $daLuu[3] !== '';
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $nguyenVong1 = filter_input(
         INPUT_POST,
@@ -46,6 +56,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $nguyenVong3 = ($nguyenVong3 === null || $nguyenVong3 === false)
         ? 0
         : $nguyenVong3;
+
+    if ($nguyenVong2 <= 0 && $nguyenVong3 > 0) {
+        $nguyenVong2 = $nguyenVong3;
+        $nguyenVong3 = 0;
+    }
 
     if (
         $nguyenVong1 === false ||
@@ -80,6 +95,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             if ($loi === '') {
+                $moi = [
+                    1 => $nguyenVong1 > 0 ? (string) $nguyenVong1 : '',
+                    2 => $nguyenVong2 > 0 ? (string) $nguyenVong2 : '',
+                    3 => $nguyenVong3 > 0 ? (string) $nguyenVong3 : '',
+                ];
+
+                if ($moi === [
+                    1 => (string) $daLuu[1],
+                    2 => (string) $daLuu[2],
+                    3 => (string) $daLuu[3],
+                ]) {
+                    $loi = 'Nguyện vọng chưa có thay đổi.';
+                } else {
                 $danhSachDangKy = [
                     1 => $nguyenVong1,
                     2 => $nguyenVong2,
@@ -118,10 +146,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 if ($luuOk) {
                     $conn->commit();
-                    $thongBao = 'Đăng ký nguyện vọng thành công.';
+                    $thongBao = $daDangKy
+                        ? 'Cập nhật nguyện vọng thành công.'
+                        : 'Đăng ký nguyện vọng thành công.';
+                    $daDangKy = true;
+                    $daLuu = $moi;
                 } else {
                     $conn->rollback();
                     $loi = 'Không thể lưu nguyện vọng. Vui lòng thử lại.';
+                }
                 }
             }
         }
@@ -133,24 +166,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $giaTriNV2 = $_POST['nguyenvong2'] ?? '';
     $giaTriNV3 = $_POST['nguyenvong3'] ?? '';
 } else {
-    $giaTriNV1 = '';
-    $giaTriNV2 = '';
-    $giaTriNV3 = '';
-
-    for ($thuTu = 1; $thuTu <= 3; $thuTu++) {
-        $daCo = $dangKyNguyenVong->kiemTraNguyenVong(
-            (int) $hocSinh['mahocsinh'],
-            $thuTu
-        );
-
-        if ($thuTu === 1) {
-            $giaTriNV1 = $daCo['matruong'] ?? '';
-        } elseif ($thuTu === 2) {
-            $giaTriNV2 = $daCo['matruong'] ?? '';
-        } else {
-            $giaTriNV3 = $daCo['matruong'] ?? '';
-        }
-    }
+    $giaTriNV1 = $daLuu[1];
+    $giaTriNV2 = $daLuu[2];
+    $giaTriNV3 = $daLuu[3];
 }
 ?>
 
@@ -259,11 +277,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             action=""
             method="POST"
             id="formNguyenVong"
-            class="bg-white shadow-sm p-5 space-y-5"
+            class="bg-white shadow-sm p-5 space-y-4"
         >
 
-            <h2 class="font-semibold text-slate-800 pb-3 border-b border-slate-100">
-                Chọn nguyện vọng
+            <h2 class="font-semibold text-slate-800  border-slate-100">
+                <?= $daDangKy ? 'Cập nhật nguyện vọng' : 'Chọn nguyện vọng' ?>
             </h2>
 
             <?php
@@ -278,13 +296,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'label' => 'Nguyện vọng 2',
                     'required' => false,
                     'placeholder' => '-- Không đăng ký --',
-                    'value' => $giaTriNV2
+                    'value' => $giaTriNV2,
+                    'disabled' => $giaTriNV1 === ''
                 ],
                 'nguyenvong3' => [
                     'label' => 'Nguyện vọng 3',
                     'required' => false,
                     'placeholder' => '-- Không đăng ký --',
-                    'value' => $giaTriNV3
+                    'value' => $giaTriNV3,
+                    'disabled' => $giaTriNV2 === ''
                 ]
             ];
 
@@ -304,15 +324,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         name="<?= $name ?>"
                         id="<?= $name ?>"
                         <?= $config['required'] ? 'required' : '' ?>
-                        class="mt-1 w-full border border-slate-300 px-3 py-2 bg-white"
+                        <?= !empty($config['disabled']) ? 'disabled' : '' ?>
+                        class="mt-1 w-full border border-slate-300 px-3 py-2 bg-white disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                     >
-                        <option value="">
-                            <?= $config['placeholder'] ?>
-                        </option>
+                        <?php if (empty($config['required'])): ?>
+                            <option value="">
+                                <?= $config['placeholder'] ?>
+                            </option>
+                        <?php endif; ?>
 
                         <?php foreach ($danhSachTruong as $truong): ?>
                             <option
                                 value="<?= (int) $truong['matruong'] ?>"
+                                data-ten="<?= $truong['tentruong'] ?>"
                                 <?= (string) $config['value'] === (string) $truong['matruong']
                                     ? 'selected'
                                     : '' ?>
@@ -330,7 +354,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     type="submit"
                     class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2.5 rounded"
                 >
-                    Xác nhận đăng ký
+                    <?= $daDangKy ? 'Cập nhật nguyện vọng' : 'Xác nhận đăng ký' ?>
                 </button>
 
                 <button
@@ -353,39 +377,90 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             document.getElementById('nguyenvong3')
         ];
 
+        const nguyenVongBanDau = <?= json_encode([
+            (string) $daLuu[1],
+            (string) $daLuu[2],
+            (string) $daLuu[3],
+        ], JSON_UNESCAPED_UNICODE) ?>;
+        const daDangKy = <?= $daDangKy ? 'true' : 'false' ?>;
+
         function capNhatDanhSachTruong() {
+            const thuTuDaChon = {};
+            cacOChon.forEach((select, index) => {
+                if (select.value !== '') {
+                    thuTuDaChon[select.value] = index + 1;
+                }
+
+                select.style.color = '';
+                select.style.backgroundColor = '#ffffff';
+                select.style.borderColor = '';
+                select.style.fontWeight = '';
+            });
+
             cacOChon.forEach(select => {
                 Array.from(select.options).forEach(option => {
                     if (option.value === '') {
                         option.disabled = false;
+                        option.style.color = '#0f172a';
+                        option.style.backgroundColor = '#ffffff';
+                        option.style.fontWeight = '';
                         return;
                     }
 
-                    const daChonOKhac = cacOChon.some(
-                        selectKhac =>
-                            selectKhac !== select &&
-                            selectKhac.value !== '' &&
-                            selectKhac.value === option.value
-                    );
+                    const ten = option.dataset.ten;
+                    const thuTu = thuTuDaChon[option.value];
+                    const dangChonONay = select.value === option.value;
+                    const daDuocChon = Boolean(thuTu);
 
-                    option.disabled = daChonOKhac;
+                    option.textContent = daDuocChon && !dangChonONay
+                        ? 'NV' + thuTu + ' · ' + ten
+                        : ten;
+                    option.style.color = daDuocChon ? '#dc2626' : '#0f172a';
+                    option.style.backgroundColor = daDuocChon ? '#fee2e2' : '#ffffff';
+                    option.style.fontWeight = daDuocChon ? '700' : '';
+                    option.disabled = daDuocChon && !dangChonONay;
                 });
             });
         }
 
+        function capNhatThuTuChon() {
+            const [nv1, nv2, nv3] = cacOChon;
+
+            if (nv2.value === '' && nv3.value !== '') {
+                nv2.value = nv3.value;
+                nv3.value = '';
+            }
+
+            nv2.disabled = nv1.value === '';
+            nv3.disabled = nv2.value === '';
+
+            capNhatDanhSachTruong();
+        }
+
         cacOChon.forEach(select => {
-            select.addEventListener('change', capNhatDanhSachTruong);
+            select.addEventListener('change', capNhatThuTuChon);
         });
 
-        capNhatDanhSachTruong();
+        capNhatThuTuChon();
 
         document.getElementById('formNguyenVong')
             .addEventListener('submit', function (event) {
-                const dongY = confirm(
-                    'Bạn có chắc chắn muốn xác nhận đăng ký nguyện vọng không?'
+                const hienTai = cacOChon.map(select => select.value);
+                const khongDoi = nguyenVongBanDau.every(
+                    (giaTri, viTri) => String(giaTri) === String(hienTai[viTri])
                 );
 
-                if (!dongY) {
+                if (khongDoi) {
+                    event.preventDefault();
+                    alert('Nguyện vọng chưa có thay đổi.');
+                    return;
+                }
+
+                const cauHoi = daDangKy
+                    ? 'Bạn có chắc chắn muốn cập nhật nguyện vọng không?'
+                    : 'Bạn có chắc chắn muốn xác nhận đăng ký nguyện vọng không?';
+
+                if (!confirm(cauHoi)) {
                     event.preventDefault();
                 }
             });
