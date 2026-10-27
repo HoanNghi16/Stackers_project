@@ -15,11 +15,5 @@
         die("Kết nối MySQL thất bại: " . $conn->connect_error);
      
     }
-    $conn->set_charset('utf8mb4');
-
-    // Tự redirect về trang chủ khi ở trong /index.php
-    if (parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) == '/stackers_project/'){
-        header('Location: ./pages/');
-    }
-
+    $conn->set_charset("utf8mb4");
 ?>

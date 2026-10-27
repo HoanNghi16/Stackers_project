@@ -1,9 +1,19 @@
 <?php
+session_start();
+
+if (
+    ($_SESSION['vaitro'] ?? '') !== 'HOC_SINH'
+    || empty($_SESSION['manguoidung'])
+) {
+    header('Location: /stackers_project/pages/login/');
+    exit;
+}
+
 require_once __DIR__ . '/../../../class/dang-ky-nguyen-vong-Model.php';
 
 $dangKyNguyenVong = new DangKyNguyenVong($conn);
 
-$manguoidung = 4;
+$manguoidung = (int) $_SESSION['manguoidung'];
 
 $thongBao = '';
 $loi = '';
@@ -186,108 +196,113 @@ if ($daLuu[1] !== '') {
 
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
+<body class="bg-slate-100 text-slate-800">
+    <?php
+        require "../../../components/layout/header.php";
+        renderHeader();
+    ?>
 
-<body class="bg-slate-100 min-h-screen text-slate-800">
+    <main class="mx-auto max-w-3xl px-4 pb-12 pt-28">
+    <div class="relative mb-7 overflow-hidden rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-indigo-50/70 p-5 shadow-sm sm:p-7">
 
-    <header class="bg-indigo-700 text-white">
-        <div class="max-w-3xl mx-auto px-4 py-5">
-            <p class="text-xs uppercase tracking-wide text-indigo-200">
-                Cổng học sinh
-            </p>
+<!-- Decorative background -->
+<div class="pointer-events-none absolute -right-10 -top-10 h-36 w-36 rounded-full bg-indigo-100/60 blur-2xl"></div>
+<div class="pointer-events-none absolute -bottom-12 right-1/4 h-24 w-24 rounded-full bg-cyan-100/50 blur-2xl"></div>
 
-            <h1 class="text-xl font-bold">
-                Đăng ký nguyện vọng tuyển sinh 10
+<div class="relative">
+    <!-- Badge -->
+    <div class="mb-4 inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-white/90 px-3.5 py-1.5 shadow-sm">
+        <span class="relative flex h-2 w-2">
+            <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-50"></span>
+            <span class="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
+        </span>
+        <span class="text-[11px] font-bold uppercase tracking-[0.16em] text-indigo-700">
+            Cổng thông tin học sinh
+        </span>
+    </div>
+
+    <!-- Heading -->
+    <div class="flex items-start gap-3 sm:gap-4">
+        <div class="hidden h-12 w-1 shrink-0 rounded-full bg-gradient-to-b from-indigo-500 to-cyan-400 sm:block"></div>
+
+        <div class="min-w-0">
+            <h1 class="text-2xl font-extrabold leading-tight tracking-tight text-slate-900 sm:text-3xl lg:text-4xl">
+                Đăng ký nguyện vọng
+                <span class="mt-1 block ml-10 bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">
+                    Tuyển sinh lớp 10
+                </span>
             </h1>
         </div>
-    </header>
+    </div>
 
-    <main class="max-w-3xl mx-auto px-4 py-6 space-y-4">
+
+</div>
+</div>
 
         <?php if ($thongBao !== ''): ?>
-            <div class="bg-green-100 text-green-800 p-4 rounded">
-                <?= $thongBao ?>
+            <div class="mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+                <?= htmlspecialchars($thongBao) ?>
             </div>
         <?php endif; ?>
 
         <?php if ($loi !== ''): ?>
-            <div class="bg-red-100 text-red-700 p-4 rounded">
-                <?= $loi ?>
+            <div class="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                <?= htmlspecialchars($loi) ?>
             </div>
         <?php endif; ?>
 
-        <!-- Thông tin học sinh -->
-        <section class="bg-white shadow-sm p-5">
-            <h2 class="font-semibold text-slate-800 mb-4 pb-3 border-b border-slate-100">
+        <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h2 class="border-b border-slate-100 pb-3 text-base font-semibold text-slate-900">
                 Thông tin học sinh
             </h2>
 
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-
-                <label class="block sm:col-span-2">
-                    <span class="text-sm text-slate-500">Họ và tên</span>
-
-                    <input
-                        type="text"
-                        value="<?= $hocSinh['ho'] . ' ' . $hocSinh['ten'] ?>"
-                        readonly
-                        class="mt-1 w-full border border-slate-300 px-3 py-2 bg-slate-50"
-                    >
-                </label>
-
-                <label class="block">
-                    <span class="text-sm text-slate-500">Ngày sinh</span>
-
-                    <input
-                        type="text"
-                        value="<?= !empty($hocSinh['ngaysinh'])
-                            ? date('d/m/Y', strtotime($hocSinh['ngaysinh']))
-                            : 'Chưa có' ?>"
-                        readonly
-                        class="mt-1 w-full border border-slate-300 px-3 py-2 bg-slate-50"
-                    >
-                </label>
-
-                <label class="block">
-                    <span class="text-sm text-slate-500">Số báo danh</span>
-
-                    <input
-                        type="text"
-                        value="<?= $hocSinh['sobaodanh'] ?: 'Chưa có' ?>"
-                        readonly
-                        class="mt-1 w-full border border-slate-300 px-3 py-2 bg-slate-50"
-                    >
-                </label>
-
-                <label class="block sm:col-span-2">
-                    <span class="text-sm text-slate-500">Trường THCS</span>
-
-                    <input
-                        type="text"
-                        value="<?= $hocSinh['truong_thcs'] ?: 'Chưa có' ?>"
-                        readonly
-                        class="mt-1 w-full border border-slate-300 px-3 py-2 bg-slate-50"
-                    >
-                </label>
-
-            </div>
+            <dl class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div class="sm:col-span-2">
+                    <dt class="text-xs font-medium uppercase tracking-wide text-slate-400">Họ và tên</dt>
+                    <dd class="mt-1 text-sm font-medium text-slate-800">
+                        <?= htmlspecialchars($hocSinh['ho'] . ' ' . $hocSinh['ten']) ?>
+                    </dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-medium uppercase tracking-wide text-slate-400">Ngày sinh</dt>
+                    <dd class="mt-1 text-sm text-slate-800">
+                        <?= !empty($hocSinh['ngaysinh'])
+                            ? htmlspecialchars(date('d/m/Y', strtotime($hocSinh['ngaysinh'])))
+                            : 'Chưa có' ?>
+                    </dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-medium uppercase tracking-wide text-slate-400">Số báo danh</dt>
+                    <dd class="mt-1 text-sm text-slate-800">
+                        <?= htmlspecialchars($hocSinh['sobaodanh'] ?: 'Chưa có') ?>
+                    </dd>
+                </div>
+                <div class="sm:col-span-2">
+                    <dt class="text-xs font-medium uppercase tracking-wide text-slate-400">Trường THCS</dt>
+                    <dd class="mt-1 text-sm text-slate-800">
+                        <?= htmlspecialchars($hocSinh['truong_thcs'] ?: 'Chưa có') ?>
+                    </dd>
+                </div>
+            </dl>
         </section>
 
-        <!-- Form đăng ký nguyện vọng -->
         <form
             action=""
             method="POST"
             id="formNguyenVong"
-            class="bg-white shadow-sm p-5 space-y-4"
+            class="mt-4 space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
         >
-
-            <h2 class="font-semibold text-slate-800  border-slate-100">
-                <?= $daDangKy ? 'Cập nhật nguyện vọng' : 'Chọn nguyện vọng' ?>
-            </h2>
+            <div class="border-b border-slate-100 pb-3">
+                <h2 class="text-base font-semibold text-slate-900">
+                    <?= $daDangKy ? 'Cập nhật nguyện vọng' : 'Chọn nguyện vọng' ?>
+                </h2>
+            </div>
 
             <?php
             $cacNguyenVong = [
                 'nguyenvong1' => [
                     'label' => 'Nguyện vọng 1',
+                    // 'hint' => 'Bắt buộc',
                     'required' => true,
                     'placeholder' => '-- Chọn trường --',
                     'value' => $giaTriNV1,
@@ -295,6 +310,7 @@ if ($daLuu[1] !== '') {
                 ],
                 'nguyenvong2' => [
                     'label' => 'Nguyện vọng 2',
+                    // 'hint' => 'Không bắt buộc',
                     'required' => false,
                     'placeholder' => '-- Không đăng ký --',
                     'value' => $giaTriNV2,
@@ -302,6 +318,7 @@ if ($daLuu[1] !== '') {
                 ],
                 'nguyenvong3' => [
                     'label' => 'Nguyện vọng 3',
+                    // 'hint' => 'Không bắt buộc',
                     'required' => false,
                     'placeholder' => '-- Không đăng ký --',
                     'value' => $giaTriNV3,
@@ -309,16 +326,21 @@ if ($daLuu[1] !== '') {
                 ]
             ];
 
+            $soThuTu = 1;
             foreach ($cacNguyenVong as $name => $config):
             ?>
-
-                <label class="block">
-                    <span class="text-sm font-medium">
-                        <?= $config['label'] ?>
-
-                        <?php if ($config['required']): ?>
-                            <span class="text-red-500">*</span>
-                        <?php endif; ?>
+                <label class="block rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <span class="flex items-center justify-between gap-3">
+                        <span class="flex items-center gap-2 text-sm font-semibold text-slate-800">
+                            <!-- <span class="flex h-6 w-6 items-center justify-center rounded-full bg-blue-700 text-xs text-white">
+                                <?= $soThuTu ?>
+                            </span> -->
+                            <?= $config['label'] ?>
+                            <?php if ($config['required']): ?>
+                                <span class="text-red-500">*</span>
+                            <?php endif; ?>
+                        </span>
+                        <!-- <span class="text-xs text-slate-400"><?= $config['hint'] ?></span> -->
                     </span>
 
                     <select
@@ -326,7 +348,7 @@ if ($daLuu[1] !== '') {
                         id="<?= $name ?>"
                         <?= $config['required'] ? 'required' : '' ?>
                         <?= !empty($config['disabled']) ? 'disabled' : '' ?>
-                        class="mt-1 w-full border border-slate-300 px-3 py-2 bg-white disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+                        class="mt-3 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600/20 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
                     >
                         <?php if (!isset($config['showPlaceholder']) || $config['showPlaceholder']): ?>
                             <option value="">
@@ -337,38 +359,38 @@ if ($daLuu[1] !== '') {
                         <?php foreach ($danhSachTruong as $truong): ?>
                             <option
                                 value="<?= (int) $truong['matruong'] ?>"
-                                data-ten="<?= $truong['tentruong'] ?>"
+                                data-ten="<?= htmlspecialchars($truong['tentruong']) ?>"
                                 <?= (string) $config['value'] === (string) $truong['matruong']
                                     ? 'selected'
                                     : '' ?>
                             >
-                                <?= $truong['tentruong'] ?>
+                                <?= htmlspecialchars($truong['tentruong']) ?>
                             </option>
                         <?php endforeach; ?>
                     </select>
                 </label>
+            <?php
+                $soThuTu++;
+            endforeach;
+            ?>
 
-            <?php endforeach; ?>
-
-            <div class="flex flex-col sm:flex-row gap-3 pt-2">
+            <div class="flex flex-col gap-3 pt-1 sm:flex-row">
                 <button
                     type="submit"
-                    class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2.5 rounded"
+                    class="flex-1 rounded-xl bg-blue-700 py-2.5 text-sm font-semibold text-white hover:bg-blue-800"
                 >
                     <?= $daDangKy ? 'Cập nhật nguyện vọng' : 'Xác nhận đăng ký' ?>
                 </button>
 
                 <button
                     type="button"
-                    onclick="window.location.href='index.php'"
-                    class="px-7 py-2.5 border border-slate-300 hover:bg-slate-50 rounded"
+                    onclick="window.location.href='../index.php'"
+                    class="rounded-xl border border-slate-300 px-7 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
                 >
                     Hủy
                 </button>
             </div>
-
         </form>
-
     </main>
 
     <script>
@@ -446,6 +468,10 @@ if ($daLuu[1] !== '') {
 
         document.getElementById('formNguyenVong')
             .addEventListener('submit', function (event) {
+                if (cacOChon[0].dataset.khoa === '1') {
+                    cacOChon[0].value = nguyenVongBanDau[0];
+                }
+
                 const hienTai = cacOChon.map(select => select.value);
                 const khongDoi = nguyenVongBanDau.every(
                     (giaTri, viTri) => String(giaTri) === String(hienTai[viTri])
