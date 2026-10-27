@@ -170,6 +170,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $giaTriNV2 = $daLuu[2];
     $giaTriNV3 = $daLuu[3];
 }
+
+if ($daLuu[1] !== '') {
+    $giaTriNV1 = $daLuu[1];
+}
 ?>
 
 <!DOCTYPE html>
@@ -194,10 +198,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <h1 class="text-xl font-bold">
                 Đăng ký nguyện vọng tuyển sinh 10
             </h1>
-
-            <p class="text-sm text-indigo-200 mt-1">
-                Chọn tối đa 3 nguyện vọng trường THPT.
-            </p>
         </div>
     </header>
 
@@ -290,7 +290,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'label' => 'Nguyện vọng 1',
                     'required' => true,
                     'placeholder' => '-- Chọn trường --',
-                    'value' => $giaTriNV1
+                    'value' => $giaTriNV1,
+                    'showPlaceholder' => $daLuu[1] === ''
                 ],
                 'nguyenvong2' => [
                     'label' => 'Nguyện vọng 2',
@@ -327,7 +328,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <?= !empty($config['disabled']) ? 'disabled' : '' ?>
                         class="mt-1 w-full border border-slate-300 px-3 py-2 bg-white disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                     >
-                        <?php if (empty($config['required'])): ?>
+                        <?php if (!isset($config['showPlaceholder']) || $config['showPlaceholder']): ?>
                             <option value="">
                                 <?= $config['placeholder'] ?>
                             </option>
