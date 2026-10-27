@@ -1,59 +1,5 @@
 <?php
-/**
- * Header component — converted from Bootstrap/custom CSS to Tailwind CSS.
- *
- * Notes on the conversion:
- * - All Bootstrap classes (navbar, container, btn-close, etc.) and the custom
- *   classes (.banner, .toolbar-item, .content-box, .item, ...) were removed
- *   and replaced with Tailwind utility classes.
- * - Select2 was dropped: it's a jQuery plugin whose generated markup
- *   (.select2-container, .select2-selection, ...) can't be meaningfully
- *   "mapped" to Tailwind — it renders its own DOM. Plain <select> elements
- *   styled with Tailwind are used instead (see $selectClass below). If you
- *   need type-ahead search in the dropdown, swap these for a headless
- *   component (e.g. Alpine + a combobox, or Tom Select styled with Tailwind)
- *   rather than Select2.
- * - The Phường/Xã list and the Trường list were duplicated verbatim for the
- *   mobile and desktop toolbars in the original markup. They're now defined
- *   once as PHP arrays ($wardOptions, $schoolOptions) and rendered through a
- *   helper function, so you only maintain the data in one place. Below,
- *   only a few sample rows are kept as placeholders — in your real app this
- *   data should come from a DB query (which it almost certainly already
- *   does), so just have that query populate these two arrays instead of
- *   hardcoding hundreds of <option> tags.
- * - Icons: the original inline Lottie/SVG icons are left as-is (they're
- *   content, not styling, and already carry their own viewBox/size). Wrap
- *   them in a sized Tailwind container instead of a fixed-size CSS class.
- * - Colors/spacing are a reasonable best-effort reconstruction of the look
- *   implied by the markup (red/white gov banner, rounded search bar
- *   overlapping the hero, 3-card icon grid) since the original stylesheet
- *   wasn't provided. Adjust the color tokens ($brand-* below) to match your
- *   actual brand palette.
- */
-
 // ---- Sample data (replace with your DB query) ---------------------------
-$wardOptions = [
-    ''       => '--- Phường/Xã ---',
-    '26732'  => 'Đặc khu Côn Đảo',
-    '27316'  => 'Phường An Đông',
-    '26878'  => 'Phường An Hội Đông',
-    // ... populate the rest from your database query, same as the original.
-];
-
-$schoolOptions = [
-    ''         => '--- Chọn ---',
-    '74000707' => 'Trường THPT Chuyên Hùng Vương',
-    '74000702' => 'Trường THPT Võ Minh Đức',
-    '74000708' => 'Trường THPT Nguyễn Đình Chiểu',
-    // ... populate the rest from your database query, same as the original.
-];
-
-$loaiHinhOptions = [
-    '1' => 'THPT Công lập',
-    '2' => 'THPT ngoài Công lập',
-    '3' => 'TT GDNN-GDTX',
-    '4' => 'Trung cấp, cao đẳng nghề',
-];
 
 $navItems = [
     ['href' => '/stackers_project/pages',                    'label' => 'Trang chủ',                  'active' => true],
@@ -84,7 +30,7 @@ function renderHeader()
 {
     global $wardOptions, $schoolOptions, $loaiHinhOptions, $navItems, $selectClass;
     ?>
-    <header class="fixed w-full h-20 bg-gradient-to-b from-blue-700 via-blue-700 to-blue-600 text-white">
+    <header class="fixed top-0 z-50 w-full h-20 bg-gradient-to-b from-blue-700 via-blue-700 to-blue-600 text-white">
         <!-- ============ Top bar: logo + nav + CTA ============ -->
         <div class="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
 
@@ -116,12 +62,49 @@ function renderHeader()
 
             <!-- Desktop CTA -->
             <div class="hidden lg:block">
-                <a
-                    href="/stackers_project/pages/login"
-                    class="rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-blue-700
-                            shadow-sm transition hover:bg-red-50">
-                    Đăng nhập
-                </a>
+                <?php
+                    if (isset($_SESSION['vaitro']) || isset($_SESSION['manguoidung'])){
+                        $site = "/";
+                        if ($_SESSION['vaitro'] == "THPT"){
+                            $site = "thpt";
+                        }
+                        if ($_SESSION['vaitro'] == "THCS"){
+                            $site = "thcs";
+                        }
+                        if ($_SESSION['vaitro'] == "SO_GD"){
+                            $site = "so-gd";
+                        }
+                        if ($_SESSION['vaitro'] == "HOC_SINH"){
+                            $site = "hoc-sinh";
+                        }
+                        $ten = 'UNKNOW';
+                        if (isset($_SESSION['ten'])){
+                            $ten = $_SESSION['ten'];
+                        }
+
+                        echo '
+                            <a href="/stackers_project/pages/'.$site.'"
+                            class="inline-flex items-center gap-2 rounded-xl bg-blue-50 px-3 py-2 text-sm text-blue-700 transition hover:bg-blue-100">
+                                <span class="font-medium">Xin chào, '.$ten.'.</span>
+                                <span class="text-xs text-blue-500">Vào dashboard</span>
+                            </a>
+                            <a
+                                href="/stackers_project/pages/logout/"
+                                class="inline-flex items-center gap-2 rounded-xl bg-blue-50 px-3 py-2 text-sm text-blue-700 transition hover:bg-blue-100">
+                                Đăng xuất
+                            </a>
+
+                        ';
+                    }else{
+                        echo '
+                            <a
+                                href="/stackers_project/pages/login"
+                                class="inline-flex items-center gap-2 rounded-xl bg-blue-50 px-3 py-2 text-sm text-blue-700 transition hover:bg-blue-100">
+                                Đăng nhập
+                            </a>
+                        ';
+                    }
+                ?>
             </div>
 
             <!-- Mobile hamburger -->
@@ -151,10 +134,25 @@ function renderHeader()
                         </li>
                     <?php endforeach; ?>
                     <li>
-                        <a href="/stackers_project/pages/login" data-bs-toggle="modal" data-bs-target="#tuyenSinhModal" data-action="tracuu"
-                           class="mt-2 block rounded-lg bg-white px-3 py-2 text-center text-sm font-semibold text-red-700">
-                            Đăng nhập
-                        </a>
+                        <?php
+                            if (isset($_SESSION['vaitro']) || isset($_SESSION['manguoidung'])){
+                                echo '
+                                    <a href="/stackers_project/pages/login" data-bs-toggle="modal" data-bs-target="#tuyenSinhModal" data-action="tracuu"
+                                        class="mt-2 block rounded-lg bg-white px-3 py-2 text-center text-sm font-semibold text-red-700">
+                                        Đăng xuất
+                                    </a>
+                                ';
+                            }else{
+                                echo '
+                                    <a href="/stackers_project/pages/login" data-bs-toggle="modal" data-bs-target="#tuyenSinhModal" data-action="tracuu"
+                                        class="mt-2 block rounded-lg bg-white px-3 py-2 text-center text-sm font-semibold text-red-700">
+                                        Đăng nhập
+                                    </a>
+                                ';
+                            }
+                        
+                        ?>
+
                     </li>
                 </ul>
             </div>
