@@ -79,11 +79,6 @@
         <!-- TIÊU ĐỀ -->
         <section class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-                <div class="mb-2 flex items-center gap-2 text-sm font-semibold text-blue-600">
-                    <span class="h-2 w-2 rounded-full bg-blue-600"></span>
-                    QUẢN LÝ KỲ THI
-                </div>
-
                 <h1 class="text-3xl font-bold tracking-tight text-slate-900">
                     Hội đồng gác thi
                 </h1>

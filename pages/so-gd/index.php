@@ -1,6 +1,7 @@
 <?php
     session_start();
-    require("../../components/layout/header.php")
+    require("../../components/layout/header.php");
+    require("../../components/layout/sidebar.php");
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -14,7 +15,10 @@
 <body>
     <?php
         renderHeader();
+        renderSidebar();
     ?>
-    
+    <div class="ml-72 w-auto text-center flex">
+        <?php require "../danh-sach-truong.php"?>
+    </div>
 </body>
 </html>
