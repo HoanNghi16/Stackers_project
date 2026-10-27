@@ -2,25 +2,31 @@
 // Trang tra cứu danh sách điểm thi - 1 FILE DUY NHẤT
 
 /* ===================== CẤU HÌNH ===================== */
-const DB_HOST = 'localhost';
+const DB_HOST = 'sv66.dataonline.vn';
+const DB_PORT = 3306;
 const DB_NAME = 'leonovar6_ptud';
-const DB_USER = 'root';
-const DB_PASS = '';
+const DB_USER = 'leonovar6_ptud';
+const DB_PASS = 'asdlfjlasdjfld';
+
+const REQUIRE_SO_GD = false;
+const DEFAULT_ROOM_CAPACITY = 24;
+const HOME_URL = '';
 
 /* ===================== KẾT NỐI DB ===================== */
 try {
     $pdo = new PDO(
-        "mysql:host=" . DB_HOST . ";dbname=" . DB_NAME . ";charset=utf8mb4",
+        "mysql:host=" . DB_HOST . ";port=" . DB_PORT . ";dbname=" . DB_NAME . ";charset=utf8mb4",
         DB_USER,
         DB_PASS,
         [
             PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_TIMEOUT            => 8,
         ]
     );
 } catch (PDOException $e) {
     http_response_code(500);
-    exit('Không kết nối được database. Kiểm tra lại DB_NAME / DB_USER / DB_PASS ở đầu file.');
+    exit('Không kết nối được database: ' . htmlspecialchars($e->getMessage()));
 }
 
 /* ===================== LẤY DỮ LIỆU (bước 2: hệ thống kiểm tra danh sách điểm thi) ===================== */
