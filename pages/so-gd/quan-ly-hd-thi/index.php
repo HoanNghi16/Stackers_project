@@ -1,4 +1,5 @@
 <?php
+    session_start();
     require("../../../components/layout/sidebar.php");
     require("../../../components/layout/header.php");
 ?>

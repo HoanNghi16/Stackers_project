@@ -37,6 +37,8 @@ $thiSinhMau = [
         'chiTietTruong' => null,
     ],
 ];
+
+require_once $_SERVER['DOCUMENT_ROOT'] . '/Stackers_project/components/layout/header.php';
 ?>
 <!DOCTYPE html>
 <html lang="vi">
@@ -51,27 +53,9 @@ $thiSinhMau = [
 </head>
 <body class="bg-gray-100 text-gray-900">
 
-  <!-- Top bar -->
-  <header class="bg-white border-b border-gray-300">
-    <div class="max-w-5xl mx-auto px-6 py-3 flex items-center justify-between">
-      <div class="flex items-center gap-3">
-        <div class="w-9 h-9 border border-gray-400 flex items-center justify-center text-xs font-bold">
-          LOGO
-        </div>
-        <span class="font-semibold text-lg">Stackers</span>
-        <span class="text-gray-400">|</span>
-        <span class="text-sm text-gray-600">Hệ thống Quản lý Tuyển sinh 10</span>
-      </div>
-      <div class="flex items-center gap-4 text-sm text-gray-600">
-        <span>Học sinh</span>
-        <div class="w-8 h-8 rounded-full border border-gray-400 flex items-center justify-center text-xs">
-          HS
-        </div>
-      </div>
-    </div>
-  </header>
+  <?php renderHeader(); ?>
 
-  <div class="max-w-3xl mx-auto px-4">
+  <div class="max-w-3xl mx-auto px-4 pt-20">
 
     <!-- Breadcrumb -->
     <div class="text-sm text-gray-500 mt-4 mb-2">

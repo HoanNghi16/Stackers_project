@@ -16,6 +16,9 @@ $danhSachChiTieu = [
 
 $thoiGianBatDau = '01/03/2027';
 $thoiGianKetThuc = '31/03/2027';
+
+require_once $_SERVER['DOCUMENT_ROOT'] . '/Stackers_project/components/layout/header.php';
+require_once $_SERVER['DOCUMENT_ROOT'] . '/Stackers_project/components/layout/sidebar.php';
 ?>
 <!DOCTYPE html>
 <html lang="vi">
@@ -24,61 +27,29 @@ $thoiGianKetThuc = '31/03/2027';
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title><?php echo $pageTitle; ?></title>
 <script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          primary: '#0284c7',
+        }
+      }
+    }
+  }
+</script>
 <style>
-  /* Wireframe mode: no color accents, grayscale only */
   body { font-family: Arial, Helvetica, sans-serif; }
 </style>
 </head>
 <body class="bg-gray-100 text-gray-900">
 
-  <!-- Top bar -->
-  <header class="bg-white border-b border-gray-300">
-    <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
-      <div class="flex items-center gap-3">
-        <div class="w-9 h-9 border border-gray-400 flex items-center justify-center text-xs font-bold">
-          LOGO
-        </div>
-        <span class="font-semibold text-lg">Stackers</span>
-        <span class="text-gray-400">|</span>
-        <span class="text-sm text-gray-600">Hệ thống Quản lý Tuyển sinh 10</span>
-      </div>
-      <div class="flex items-center gap-4 text-sm text-gray-600">
-        <span>Trường THPT Nguyễn Thị Minh Khai</span>
-        <div class="w-8 h-8 rounded-full border border-gray-400 flex items-center justify-center text-xs">
-          THPT
-        </div>
-      </div>
-    </div>
-  </header>
-
-  <div class="max-w-7xl mx-auto flex">
-
-    <!-- Sidebar: các chức năng của Trường THPT -->
-    <aside class="w-64 min-h-screen bg-white border-r border-gray-300 p-4 hidden md:block">
-      <nav class="space-y-1 text-sm">
-        <div class="px-3 py-2 text-gray-500">TỔNG QUAN</div>
-        <a href="#" class="block px-3 py-2 rounded border border-transparent hover:border-gray-300">Trang chủ</a>
-
-        <div class="px-3 py-2 text-gray-500 mt-3">TUYỂN SINH</div>
-        <a href="#" class="block px-3 py-2 rounded border border-gray-400 bg-gray-100 font-medium">
-          Đăng ký chỉ tiêu
-        </a>
-        <a href="#" class="block px-3 py-2 rounded border border-transparent hover:border-gray-300">Xem danh sách học sinh nhập học</a>
-
-        <div class="px-3 py-2 text-gray-500 mt-3">HỘI ĐỒNG THI</div>
-        <a href="#" class="block px-3 py-2 rounded border border-transparent hover:border-gray-300">Chọn giáo viên tham gia hội đồng thi</a>
-
-        <div class="px-3 py-2 text-gray-500 mt-3">TRA CỨU</div>
-        <a href="#" class="block px-3 py-2 rounded border border-transparent hover:border-gray-300">Xem danh sách trường</a>
-        <a href="#" class="block px-3 py-2 rounded border border-transparent hover:border-gray-300">Xem danh sách điểm thi</a>
-
-        <div class="px-3 py-2 text-gray-500 mt-3">HỆ THỐNG</div>
-        <a href="#" class="block px-3 py-2 rounded border border-transparent hover:border-gray-300">Đổi mật khẩu</a>
-      </nav>
-    </aside>
+  <?php renderHeader(); ?>
+  <?php renderSidebar(); ?>
 
     <!-- Main content -->
-    <main class="flex-1 p-6">
+    <main class="pt-20 lg:pl-72">
+      <div class="max-w-5xl mx-auto p-6">
 
       <!-- Breadcrumb -->
       <div class="text-sm text-gray-500 mb-2">
@@ -185,8 +156,8 @@ $thoiGianKetThuc = '31/03/2027';
 
       </form>
 
+      </div>
     </main>
-  </div>
 
   <!-- Modal: Đăng ký thành công (ẩn mặc định) -->
   <div id="modalThanhCong" class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
