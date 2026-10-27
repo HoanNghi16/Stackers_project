@@ -1,9 +1,19 @@
 <?php
+session_start();
+
+if (
+    ($_SESSION['vaitro'] ?? '') !== 'HOC_SINH'
+    || empty($_SESSION['manguoidung'])
+) {
+    header('Location: /stackers_project/pages/login/');
+    exit;
+}
+
 require_once __DIR__ . '/../../../class/dang-ky-nguyen-vong-Model.php';
 
 $hocSinhModel = new DangKyNguyenVong($conn);
 
-$manguoidung = 4; // Tạm thời dùng để kiểm thử
+$manguoidung = (int) $_SESSION['manguoidung'];
 
 $thongBao = '';
 $loi = '';
@@ -59,24 +69,47 @@ $hocSinh = $hocSinhModel->getById($manguoidung);
 
 <body class="bg-slate-100 min-h-screen text-slate-800">
     <?php
-            require "../../../../components/layout/header.php";
-            require "../../../../components/layout/sidebar.php";
+            require "../../../components/layout/header.php";
 
             renderHeader();
-            renderSidebar();
         ?>
-    <header class="bg-indigo-700 text-white">
-        <div class="max-w-3xl mx-auto px-4 py-5">
-            <p class="text-xs uppercase tracking-wide text-indigo-200">
-                Cổng học sinh
-            </p>
-            <h1 class="text-xl font-bold">
-                Đăng ký dự thi tuyển sinh 10
-            </h1>
-        </div>
-    </header>
+    
+    <main class="mx-auto max-w-3xl px-4 pb-12 pt-28">
+        <div class="relative mb-7 overflow-hidden rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-indigo-50/70 p-5 shadow-sm sm:p-7">
 
-    <main class="max-w-3xl mx-auto px-4 py-6 space-y-4">
+            <!-- Decorative background -->
+            <div class="pointer-events-none absolute -right-10 -top-10 h-36 w-36 rounded-full bg-indigo-100/60 blur-2xl"></div>
+            <div class="pointer-events-none absolute -bottom-12 right-1/4 h-24 w-24 rounded-full bg-cyan-100/50 blur-2xl"></div>
+
+            <div class="relative">
+                <!-- Badge -->
+                <div class="mb-4 inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-white/90 px-3.5 py-1.5 shadow-sm">
+                    <span class="relative flex h-2 w-2">
+                        <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-50"></span>
+                        <span class="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
+                    </span>
+                    <span class="text-[11px] font-bold uppercase tracking-[0.16em] text-indigo-700">
+                        Cổng thông tin học sinh
+                    </span>
+                </div>
+
+                <!-- Heading -->
+                <div class="flex items-start gap-3 sm:gap-4">
+                    <div class="hidden h-12 w-1 shrink-0 rounded-full bg-gradient-to-b from-indigo-500 to-cyan-400 sm:block"></div>
+
+                    <div class="min-w-0">
+                        <h1 class="text-2xl font-extrabold leading-tight tracking-tight text-slate-900 sm:text-3xl lg:text-4xl">
+                            Đăng ký dự thi
+                            <span class="mt-1  bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">
+                                Tuyển sinh lớp 10
+                            </span>
+                        </h1>
+                    </div>
+                </div>
+
+
+            </div>
+        </div>
 
         <?php if (!$hocSinh): ?>
 
@@ -89,7 +122,7 @@ $hocSinh = $hocSinhModel->getById($manguoidung);
         <?php else: ?>
 
             <?php if ($thongBao !== ''): ?>
-                <div class="bg-green-100 text-green-800 p-4 rounded">
+                <div class="bg-green-100 text-green-800 p-4 rounded mb-4">
                     <?= $thongBao ?>
                 </div>
             <?php endif; ?>
@@ -105,7 +138,7 @@ $hocSinh = $hocSinhModel->getById($manguoidung);
                     Thông tin học sinh
                 </h2>
 
-                <div class="space-y-3">
+                <div class="space-y-3 border-b pb-3">
                     <p>
                         <span class="text-slate-500">Mã hồ sơ:</span>
                         <?= $hocSinh['mahoso'] ?>
@@ -145,11 +178,10 @@ $hocSinh = $hocSinhModel->getById($manguoidung);
                     </p>
                 </div>
             </section>
-
             <form
                 method="POST"
                 id="formDangKy"
-                class="bg-white shadow-sm p-5 space-y-4"
+                class="bg-white shadow-sm p-5 pt-0 space-y-4"
             >
                 <h2 class="font-semibold">
                     Bạn có đăng ký dự thi tuyển sinh 10 không?
@@ -192,7 +224,7 @@ $hocSinh = $hocSinhModel->getById($manguoidung);
                         </span>
                     </span>
                 </label>
-
+                <span class="text-sm text-slate-500 mt-1">* Chọn Dự thi nếu bạn tham gia kỳ thi. Chọn Không dự thi nếu bạn không đăng ký.</span>
                 <div class="flex gap-3 pt-2">
                     <button
                         type="submit"
@@ -203,7 +235,7 @@ $hocSinh = $hocSinhModel->getById($manguoidung);
 
                     <button
                         type="button"
-                        onclick="window.location.reload()"
+                        onclick="window.location.href='../index.php'"
                         class="px-6 border rounded hover:bg-slate-50"
                     >
                         Hủy

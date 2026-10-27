@@ -1,6 +1,16 @@
 <?php
     session_start();
+
+    if (
+        ($_SESSION['vaitro'] ?? '') !== 'HOC_SINH'
+        || empty($_SESSION['manguoidung'])
+    ) {
+        header('Location: /stackers_project/pages/login/');
+        exit;
+    }
+
     require("../../components/layout/header.php");
+    $tenHocSinh = $_SESSION['ten'] ?? 'học sinh';
 ?>
 <!DOCTYPE html>
 <html lang="vi">
@@ -14,9 +24,7 @@
 <body class="bg-slate-50 text-slate-800">
     <?php renderHeader(); ?>
 
-    <main class="pt-24 pb-12 px-4 sm:px-6 lg:px-10">
-        <div class="max-w-7xl mx-auto">
-
+    <main class="mx-auto max-w-7xl px-4 pb-12 pt-28 sm:px-6 lg:px-10">
             <!-- Tiêu đề trang -->
             <div class="mb-10">
                 <div class="inline-flex items-center gap-2 px-3 py-1.5
@@ -28,7 +36,7 @@
 
                 <h1 class="text-3xl sm:text-4xl font-extrabold
                            tracking-tight text-slate-900">
-                    Xin chào, học sinh!
+                    Xin chào, <?= htmlspecialchars($tenHocSinh, ENT_QUOTES, 'UTF-8') ?>!
                 </h1>
 
                 <p class="mt-3 text-slate-500 text-base sm:text-lg">
@@ -38,7 +46,7 @@
             </div>
 
             <!-- Thông báo -->
-            <div class="overflow-hidden rounded-2xl
+            <div class="relative overflow-hidden rounded-2xl
                         bg-gradient-to-r from-blue-700 to-indigo-600
                         p-6 sm:p-8 mb-10 text-white shadow-lg shadow-blue-100">
 
@@ -396,8 +404,6 @@
                     © <?= date('Y') ?> Stackers. All rights reserved.
                 </p>
             </div>
-
-        </div>
     </main>
 </body>
 </html>

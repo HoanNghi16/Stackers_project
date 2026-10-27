@@ -1,9 +1,19 @@
 <?php
+session_start();
+
+if (
+    ($_SESSION['vaitro'] ?? '') !== 'HOC_SINH'
+    || empty($_SESSION['manguoidung'])
+) {
+    header('Location: /stackers_project/pages/login/');
+    exit;
+}
+
 require_once __DIR__ . '/../../../class/dang-ky-nguyen-vong-Model.php';
 
 $dangKyNguyenVong = new DangKyNguyenVong($conn);
 
-$manguoidung = 4;
+$manguoidung = (int) $_SESSION['manguoidung'];
 
 $thongBao = '';
 $loi = '';
@@ -193,17 +203,41 @@ if ($daLuu[1] !== '') {
     ?>
 
     <main class="mx-auto max-w-3xl px-4 pb-12 pt-28">
-        <div class="mb-6">
-            <p class="text-sm font-semibold uppercase tracking-wide text-blue-700">
-                Cổng học sinh
-            </p>
-            <h1 class="mt-1 text-2xl font-bold text-slate-900">
-                Đăng ký nguyện vọng tuyển sinh 10
+    <div class="relative mb-7 overflow-hidden rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-indigo-50/70 p-5 shadow-sm sm:p-7">
+
+<!-- Decorative background -->
+<div class="pointer-events-none absolute -right-10 -top-10 h-36 w-36 rounded-full bg-indigo-100/60 blur-2xl"></div>
+<div class="pointer-events-none absolute -bottom-12 right-1/4 h-24 w-24 rounded-full bg-cyan-100/50 blur-2xl"></div>
+
+<div class="relative">
+    <!-- Badge -->
+    <div class="mb-4 inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-white/90 px-3.5 py-1.5 shadow-sm">
+        <span class="relative flex h-2 w-2">
+            <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-50"></span>
+            <span class="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
+        </span>
+        <span class="text-[11px] font-bold uppercase tracking-[0.16em] text-indigo-700">
+            Cổng thông tin học sinh
+        </span>
+    </div>
+
+    <!-- Heading -->
+    <div class="flex items-start gap-3 sm:gap-4">
+        <div class="hidden h-12 w-1 shrink-0 rounded-full bg-gradient-to-b from-indigo-500 to-cyan-400 sm:block"></div>
+
+        <div class="min-w-0">
+            <h1 class="text-2xl font-extrabold leading-tight tracking-tight text-slate-900 sm:text-3xl lg:text-4xl">
+                Đăng ký nguyện vọng
+                <span class="mt-1 block ml-10 bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">
+                    Tuyển sinh lớp 10
+                </span>
             </h1>
-            <p class="mt-2 text-sm text-slate-500">
-                Nguyện vọng 1 là bắt buộc. Có thể đăng ký thêm nguyện vọng 2 và 3, mỗi trường chỉ chọn một lần.
-            </p>
         </div>
+    </div>
+
+
+</div>
+</div>
 
         <?php if ($thongBao !== ''): ?>
             <div class="mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
@@ -268,7 +302,7 @@ if ($daLuu[1] !== '') {
             $cacNguyenVong = [
                 'nguyenvong1' => [
                     'label' => 'Nguyện vọng 1',
-                    'hint' => 'Bắt buộc',
+                    // 'hint' => 'Bắt buộc',
                     'required' => true,
                     'placeholder' => '-- Chọn trường --',
                     'value' => $giaTriNV1,
@@ -276,7 +310,7 @@ if ($daLuu[1] !== '') {
                 ],
                 'nguyenvong2' => [
                     'label' => 'Nguyện vọng 2',
-                    'hint' => 'Không bắt buộc',
+                    // 'hint' => 'Không bắt buộc',
                     'required' => false,
                     'placeholder' => '-- Không đăng ký --',
                     'value' => $giaTriNV2,
@@ -284,7 +318,7 @@ if ($daLuu[1] !== '') {
                 ],
                 'nguyenvong3' => [
                     'label' => 'Nguyện vọng 3',
-                    'hint' => 'Không bắt buộc',
+                    // 'hint' => 'Không bắt buộc',
                     'required' => false,
                     'placeholder' => '-- Không đăng ký --',
                     'value' => $giaTriNV3,
@@ -298,15 +332,15 @@ if ($daLuu[1] !== '') {
                 <label class="block rounded-xl border border-slate-200 bg-slate-50 p-4">
                     <span class="flex items-center justify-between gap-3">
                         <span class="flex items-center gap-2 text-sm font-semibold text-slate-800">
-                            <span class="flex h-6 w-6 items-center justify-center rounded-full bg-blue-700 text-xs text-white">
+                            <!-- <span class="flex h-6 w-6 items-center justify-center rounded-full bg-blue-700 text-xs text-white">
                                 <?= $soThuTu ?>
-                            </span>
+                            </span> -->
                             <?= $config['label'] ?>
                             <?php if ($config['required']): ?>
                                 <span class="text-red-500">*</span>
                             <?php endif; ?>
                         </span>
-                        <span class="text-xs text-slate-400"><?= $config['hint'] ?></span>
+                        <!-- <span class="text-xs text-slate-400"><?= $config['hint'] ?></span> -->
                     </span>
 
                     <select
@@ -350,7 +384,7 @@ if ($daLuu[1] !== '') {
 
                 <button
                     type="button"
-                    onclick="window.location.href='index.php'"
+                    onclick="window.location.href='../index.php'"
                     class="rounded-xl border border-slate-300 px-7 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
                 >
                     Hủy
