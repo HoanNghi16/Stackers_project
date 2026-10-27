@@ -30,6 +30,9 @@ if (
 
 $danhSachTruong = $dangKyNguyenVong->getDanhSachTruong();
 
+$hanDangKy = $dangKyNguyenVong->layHanDangKyNguyenVong($hocSinh['makythi']);
+$hetHan = $hanDangKy !== null && date('Y-m-d') > $hanDangKy;
+
 $daLuu = [1 => '', 2 => '', 3 => ''];
 for ($thuTu = 1; $thuTu <= 3; $thuTu++) {
     $daCo = $dangKyNguyenVong->kiemTraNguyenVong(
@@ -40,7 +43,11 @@ for ($thuTu = 1; $thuTu <= 3; $thuTu++) {
 }
 $daDangKy = $daLuu[1] !== '' || $daLuu[2] !== '' || $daLuu[3] !== '';
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $hetHan) {
+    $loi = 'Đã hết hạn đăng ký nguyện vọng'
+        . ($hanDangKy ? ' vào ngày ' . date('d/m/Y', strtotime($hanDangKy)) : '')
+        . '. Bạn không thể đăng ký hoặc chỉnh sửa nguyện vọng.';
+} elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $nguyenVong1 = filter_input(
         INPUT_POST,
         'nguyenvong1',
@@ -245,7 +252,22 @@ if ($daLuu[1] !== '') {
             </div>
         <?php endif; ?>
 
-        <?php if ($loi !== ''): ?>
+        <?php if ($hanDangKy): ?>
+            <?php if ($hetHan): ?>
+                <div class="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                    Đã hết hạn đăng ký nguyện vọng vào ngày
+                    <?= htmlspecialchars(date('d/m/Y', strtotime($hanDangKy))) ?>.
+                    Bạn không thể đăng ký hoặc chỉnh sửa nguyện vọng.
+                </div>
+            <?php else: ?>
+                <div class="mb-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+                    Thời gian đăng ký nguyện vọng đến hết ngày
+                    <?= htmlspecialchars(date('d/m/Y', strtotime($hanDangKy))) ?>.
+                </div>
+            <?php endif; ?>
+        <?php endif; ?>
+
+        <?php if ($loi !== '' && !$hetHan): ?>
             <div class="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                 <?= htmlspecialchars($loi) ?>
             </div>
@@ -294,7 +316,11 @@ if ($daLuu[1] !== '') {
         >
             <div class="border-b border-slate-100 pb-3">
                 <h2 class="text-base font-semibold text-slate-900">
-                    <?= $daDangKy ? 'Cập nhật nguyện vọng' : 'Chọn nguyện vọng' ?>
+                    <?php if ($hetHan): ?>
+                        Nguyện vọng đã đăng ký
+                    <?php else: ?>
+                        <?= $daDangKy ? 'Cập nhật nguyện vọng' : 'Chọn nguyện vọng' ?>
+                    <?php endif; ?>
                 </h2>
             </div>
 
@@ -346,8 +372,8 @@ if ($daLuu[1] !== '') {
                     <select
                         name="<?= $name ?>"
                         id="<?= $name ?>"
-                        <?= $config['required'] ? 'required' : '' ?>
-                        <?= !empty($config['disabled']) ? 'disabled' : '' ?>
+                        <?= $config['required'] && !$hetHan ? 'required' : '' ?>
+                        <?= ($hetHan || !empty($config['disabled'])) ? 'disabled' : '' ?>
                         class="mt-3 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600/20 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
                     >
                         <?php if (!isset($config['showPlaceholder']) || $config['showPlaceholder']): ?>
@@ -375,12 +401,14 @@ if ($daLuu[1] !== '') {
             ?>
 
             <div class="flex flex-col gap-3 pt-1 sm:flex-row">
+                <?php if (!$hetHan): ?>
                 <button
                     type="submit"
                     class="flex-1 rounded-xl bg-blue-700 py-2.5 text-sm font-semibold text-white hover:bg-blue-800"
                 >
                     <?= $daDangKy ? 'Cập nhật nguyện vọng' : 'Xác nhận đăng ký' ?>
                 </button>
+                <?php endif; ?>
 
                 <button
                     type="button"
@@ -406,6 +434,7 @@ if ($daLuu[1] !== '') {
             (string) $daLuu[3],
         ], JSON_UNESCAPED_UNICODE) ?>;
         const daDangKy = <?= $daDangKy ? 'true' : 'false' ?>;
+        const hetHan = <?= $hetHan ? 'true' : 'false' ?>;
 
         function capNhatDanhSachTruong() {
             const thuTuDaChon = {};
@@ -460,14 +489,27 @@ if ($daLuu[1] !== '') {
             capNhatDanhSachTruong();
         }
 
-        cacOChon.forEach(select => {
-            select.addEventListener('change', capNhatThuTuChon);
-        });
+        if (hetHan) {
+            cacOChon.forEach(select => {
+                select.disabled = true;
+            });
+            capNhatDanhSachTruong();
+        } else {
+            cacOChon.forEach(select => {
+                select.addEventListener('change', capNhatThuTuChon);
+            });
 
-        capNhatThuTuChon();
+            capNhatThuTuChon();
+        }
 
         document.getElementById('formNguyenVong')
             .addEventListener('submit', function (event) {
+                if (hetHan) {
+                    event.preventDefault();
+                    alert('Đã hết hạn đăng ký nguyện vọng.');
+                    return;
+                }
+
                 if (cacOChon[0].dataset.khoa === '1') {
                     cacOChon[0].value = nguyenVongBanDau[0];
                 }

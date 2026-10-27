@@ -73,6 +73,29 @@ class DangKyNguyenVong
         return $result->fetch_assoc();
     }
 
+    public function layHanDangKyNguyenVong($makythi)
+    {
+        $makythi = (int) $makythi;
+
+        $stmt = $this->conn->prepare(
+            "SELECT hanchotdangkynguyenvong
+             FROM kythituyensinh
+             WHERE makythi = ?
+             LIMIT 1"
+        );
+        if (!$stmt) {
+            return null;
+        }
+
+        $stmt->bind_param("i", $makythi);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $row = $result ? $result->fetch_assoc() : null;
+        $stmt->close();
+
+        return $row['hanchotdangkynguyenvong'] ?? null;
+    }
+
     public function getDanhSachTruong()
     {
         $sql = "SELECT matruong, tentruong
