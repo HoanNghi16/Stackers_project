@@ -82,13 +82,9 @@ sort($subjects);
             <h1 class="mb-1.5 text-[30px] font-bold leading-tight">Chọn giáo viên tham gia hội đồng thi – THPT</h1>
             <p class="mb-6 text-gray-500">Chọn giáo viên thủ công hoặc nhập danh sách từ Excel.</p>
 
-            <div class="mb-[18px] rounded-[14px] border border-gray-200 bg-white p-5 shadow-[0_10px_25px_rgba(15,23,42,0.08)]">
-                <p class="font-semibold">Danh sách giáo viên được truy vấn từ bảng giaovien, hosonguoidung theo trường THPT đăng nhập.</p>
-                <p class="text-sm text-slate-500">Chọn thủ công hoặc nhập .xlsx, lưu nháp trước khi gửi. Mọi điều kiện được máy chủ kiểm tra lại.</p>
-                <?php if ($pageError): ?>
-                    <div class="my-3 rounded-[10px] border border-red-200 bg-red-50 px-[15px] py-[13px] font-semibold text-red-800"><?= htmlspecialchars($pageError, ENT_QUOTES, 'UTF-8') ?></div>
-                <?php endif; ?>
-            </div>
+            <?php if ($pageError): ?>
+                <div class="mb-[18px] rounded-[10px] border border-red-200 bg-red-50 px-[15px] py-[13px] font-semibold text-red-800"><?= htmlspecialchars($pageError, ENT_QUOTES, 'UTF-8') ?></div>
+            <?php endif; ?>
 
             <div class="grid grid-cols-12 gap-4">
                 <div class="col-span-12 min-[801px]:col-span-4">
