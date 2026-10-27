@@ -196,7 +196,7 @@ renderSidebar();
 ?>
 
 <main class="pl-72 pt-20">
-    <div class="mx-auto max-w-4xl px-6 py-8">
+    <div class="mx-auto max-w-7xl px-6 py-8">
 
         <!-- Breadcrumb + tiêu đề -->
         <p class="mb-2 text-sm text-slate-500">
