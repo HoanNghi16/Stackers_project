@@ -116,6 +116,23 @@
         }
 
 
+        public function GetGiaoVienGacThiDaPhanCong($matruonghoc){
+            $sql = "SELECT DISTINCT gt.magiaovien, CONCAT(hs.ho, ' ', hs.ten) as tengiaovien, gt.vaitro, nd.vaitro as capgiangday, gt.madiadiemthi 
+                        FROM phanconggacthi gt JOIN giaovien gv
+                            ON gt.magiaovien = gv.magiaovien
+                        JOIN hosonguoidung hs
+                            ON hs.manguoidung = gv.manguoidung
+                        JOIN nguoidung nd
+                            ON nd.manguoidung = gv.manguoidung
+                    WHERE madiadiemthi = ?";
+            $stmt = $this->conn->prepare($sql);
+            $stmt->bind_param('i', $matruonghoc);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            return $result->fetch_all(MYSQLI_ASSOC);
+        }
+
+
         public function GetGiaoVienDaPhanCong($loaihoidong, $mamon) {
             if (
                 $loaihoidong != "chamthi" &&
