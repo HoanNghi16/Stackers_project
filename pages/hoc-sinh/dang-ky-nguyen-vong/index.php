@@ -58,7 +58,13 @@ $hocSinh = $hocSinhModel->getById($manguoidung);
 </head>
 
 <body class="bg-slate-100 min-h-screen text-slate-800">
+    <?php
+            require "../../../../components/layout/header.php";
+            require "../../../../components/layout/sidebar.php";
 
+            renderHeader();
+            renderSidebar();
+        ?>
     <header class="bg-indigo-700 text-white">
         <div class="max-w-3xl mx-auto px-4 py-5">
             <p class="text-xs uppercase tracking-wide text-indigo-200">
