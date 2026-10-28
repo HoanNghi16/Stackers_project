@@ -1,2 +1,7 @@
 <?php
-class XetTuyenException extends RuntimeException {}
+namespace XetTuyen;
+
+class NghiepVuException extends \RuntimeException
+{
+}
+
