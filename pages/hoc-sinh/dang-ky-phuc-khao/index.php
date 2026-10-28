@@ -1,365 +1,185 @@
 <?php
+declare(strict_types=1);
+if (session_status() === PHP_SESSION_NONE) session_start();
+if (empty($_SESSION['manguoidung']) || empty($_SESSION['vaitro'])) {
+    header('Location: /stackers_project/pages/login/'); exit;
+}
+if (strtoupper((string)$_SESSION['vaitro']) !== 'HOC_SINH') {
+    http_response_code(403);
+    exit('<!doctype html><html lang="vi"><meta charset="utf-8"><title>Không có quyền truy cập</title><p>Chức năng này dành cho học sinh đã đăng nhập.</p><a href="/stackers_project/pages/">Về trang chủ</a></html>');
+}
+require_once __DIR__ . '/../../../class/dang-ky-phuc-khao.php';
 require_once __DIR__ . '/../../../components/layout/header.php';
 require_once __DIR__ . '/../../../components/layout/sidebar.php';
+function pkH(mixed $s): string { return PhatDb::escape($s); }
+function pkDate(mixed $s): string {
+    if (!$s) return 'Chưa cập nhật';
+    $t = strtotime((string)$s);
+    return $t ? date('d/m/Y', $t) : 'Chưa cập nhật';
+}
+function pkScore(mixed $v): string {
+    return $v === null ? 'Chưa có điểm' : rtrim(rtrim(number_format((float)$v, 2, '.', ''), '0'), '.');
+}
 
-$scenario = $_GET['scenario'] ?? 'normal';
+$errors = [];
+$notice = null;
+$student = null;
+$papers = [];
+$submittedIds = [];
+$history = [];
+$evidenceNames = [];
+$evidenceReady = false;
+$canSubmit = false;
+$isScorePublished = false;
+$allRegistered = false;
+$reason = '';
+$chosen = [];
+if (empty($_SESSION['pk_csrf'])) $_SESSION['pk_csrf'] = bin2hex(random_bytes(32));
+if (!empty($_SESSION['pk_message'])) { $notice = $_SESSION['pk_message']; unset($_SESSION['pk_message']); }
 
-$subjects = [
-    ['id' => 'van', 'name' => 'Ngữ văn', 'score' => '7.25', 'status' => 'Có thể phúc khảo'],
-    ['id' => 'anh', 'name' => 'Ngoại ngữ', 'score' => '8.00', 'status' => 'Có thể phúc khảo'],
-    ['id' => 'toan', 'name' => 'Toán', 'score' => '6.75', 'status' => 'Có thể phúc khảo'],
-];
-?>
-
-<!doctype html>
-<html lang="vi">
-
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>Đăng ký phúc khảo</title>
-
-    <link rel="stylesheet" href="../../../assets/css/phat-tailwind.css">
-</head>
-
-<body class="m-0 bg-[#f5f7fb] font-sans text-[#1f2937]">
-
-    <?php renderHeader(); ?>
-    <?php renderSidebar(); ?>
-
-    <div class="min-h-screen bg-slate-50 pl-72 pt-20">
-
-        <main class="mx-auto mt-7 max-w-[1180px] px-[18px] pb-12">
-
-            <h1 class="mb-1.5 text-[30px] font-bold leading-tight">Đăng ký phúc khảo</h1>
-            <p class="mb-6 text-gray-500">
-                Chọn một hoặc nhiều môn thi cần phúc khảo và gửi phiếu yêu cầu.
-            </p>
-
-            <form class="mb-[18px] rounded-[14px] border border-gray-200 bg-white p-5 shadow-[0_10px_25px_rgba(15,23,42,0.08)]" method="get">
-                <label class="mb-[7px] block font-[650]">Mô phỏng tình huống</label>
-
-                <div class="grid grid-cols-12 gap-4">
-                    <div class="col-span-12 min-[801px]:col-span-8">
-                        <select class="w-full rounded-[9px] border border-slate-300 bg-white px-3 py-2.5 text-[#1f2937] outline-none focus:border-blue-600 focus:ring-[3px] focus:ring-blue-600/10" name="scenario">
-                            <option value="normal" <?= $scenario === 'normal' ? 'selected' : '' ?>>
-                                Basic flow - được phép đăng ký
-                            </option>
-
-                            <option value="not_started" <?= $scenario === 'not_started' ? 'selected' : '' ?>>
-                                Alternative 2.1 - chưa đến thời gian
-                            </option>
-
-                            <option value="expired" <?= $scenario === 'expired' ? 'selected' : '' ?>>
-                                Alternative 2.2 - hết thời hạn
-                            </option>
-
-                            <option value="no_result" <?= $scenario === 'no_result' ? 'selected' : '' ?>>
-                                Alternative 2.3 - chưa có kết quả thi
-                            </option>
-
-                            <option value="duplicate" <?= $scenario === 'duplicate' ? 'selected' : '' ?>>
-                                Alternative 6.2 - môn đã đăng ký
-                            </option>
-
-                            <option value="save_error" <?= $scenario === 'save_error' ? 'selected' : '' ?>>
-                                Exception 10.1 - lỗi lưu phiếu
-                            </option>
-                        </select>
-                    </div>
-
-                    <div class="col-span-12 min-[801px]:col-span-4">
-                        <button class="inline-flex cursor-pointer items-center justify-center gap-2 rounded-[9px] px-[15px] py-2.5 font-bold bg-blue-600 text-white hover:bg-blue-700" type="submit">
-                            Hiển thị tình huống
-                        </button>
-                    </div>
-                </div>
-            </form>
-
-            <?php if ($scenario === 'not_started'): ?>
-
-                <div class="my-3 rounded-[10px] border px-[15px] py-[13px] font-semibold border-amber-200 bg-amber-50 text-amber-800">
-                    Chưa đến thời gian đăng ký phúc khảo.
-                    Thời gian bắt đầu tiếp nhận: 20/06/2027 08:00.
-                </div>
-
-            <?php elseif ($scenario === 'expired'): ?>
-
-                <div class="my-3 rounded-[10px] border px-[15px] py-[13px] font-semibold border-red-200 bg-red-50 text-red-800">
-                    Đã hết thời hạn đăng ký phúc khảo.
-                    Hệ thống không cho phép tạo phiếu mới.
-                </div>
-
-            <?php elseif ($scenario === 'no_result'): ?>
-
-                <div class="my-3 rounded-[10px] border px-[15px] py-[13px] font-semibold border-amber-200 bg-amber-50 text-amber-800">
-                    Chưa có kết quả thi để đăng ký phúc khảo.
-                </div>
-
-            <?php else: ?>
-
-                <div class="mb-[18px] rounded-[14px] border border-gray-200 bg-white p-5 shadow-[0_10px_25px_rgba(15,23,42,0.08)]">
-                    <h2 class="mb-4 text-2xl font-bold">1. Chọn môn cần phúc khảo</h2>
-
-                    <div class="overflow-x-auto">
-                        <table class="w-full border-collapse">
-                            <thead>
-                                <tr>
-                                    <th class="border-b border-gray-200 px-2.5 py-3 text-left align-top bg-slate-50 text-[13px] font-bold uppercase text-slate-500">Chọn</th>
-                                    <th class="border-b border-gray-200 px-2.5 py-3 text-left align-top bg-slate-50 text-[13px] font-bold uppercase text-slate-500">Môn thi</th>
-                                    <th class="border-b border-gray-200 px-2.5 py-3 text-left align-top bg-slate-50 text-[13px] font-bold uppercase text-slate-500">Điểm công bố</th>
-                                    <th class="border-b border-gray-200 px-2.5 py-3 text-left align-top bg-slate-50 text-[13px] font-bold uppercase text-slate-500">Trạng thái</th>
-                                </tr>
-                            </thead>
-
-                            <tbody>
-                                <?php foreach ($subjects as $s): ?>
-                                    <tr>
-                                        <td class="border-b border-gray-200 px-2.5 py-3 text-left align-top">
-                                            <input class="subject h-4 w-4 accent-blue-600" type="checkbox"
-                                                value="<?= htmlspecialchars($s['id']) ?>"
-                                                data-name="<?= htmlspecialchars($s['name']) ?>"
-                                                data-score="<?= htmlspecialchars($s['score']) ?>">
-                                        </td>
-
-                                        <td class="border-b border-gray-200 px-2.5 py-3 text-left align-top"><b><?= htmlspecialchars($s['name']) ?></b></td>
-                                        <td class="border-b border-gray-200 px-2.5 py-3 text-left align-top"><?= htmlspecialchars($s['score']) ?></td>
-
-                                        <td class="border-b border-gray-200 px-2.5 py-3 text-left align-top">
-                                            <span class="inline-block rounded-full px-[9px] py-[5px] text-xs font-extrabold bg-green-100 text-green-800">
-                                                <?= htmlspecialchars($s['status']) ?>
-                                            </span>
-                                        </td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <?php if ($scenario === 'duplicate'): ?>
-                        <div class="my-3 rounded-[10px] border px-[15px] py-[13px] font-semibold border-amber-200 bg-amber-50 text-amber-800">
-                            Môn thi này đã được đăng ký phúc khảo.
-                        </div>
-                    <?php endif; ?>
-                </div>
-
-                <div class="mb-[18px] rounded-[14px] border border-gray-200 bg-white p-5 shadow-[0_10px_25px_rgba(15,23,42,0.08)]">
-                    <h2 class="mb-4 text-2xl font-bold">2. Thông tin đăng ký</h2>
-
-                    <div id="formAlert" class="my-3 rounded-[10px] border px-[15px] py-[13px] font-semibold hidden"></div>
-
-                    <div class="grid grid-cols-12 gap-4">
-                        <div class="col-span-12">
-                            <label class="mb-[7px] block font-[650]">
-                                Lý do phúc khảo
-                                <span class="text-red-600">*</span>
-                            </label>
-
-                            <textarea class="min-h-[110px] resize-y w-full rounded-[9px] border border-slate-300 bg-white px-3 py-2.5 text-[#1f2937] outline-none focus:border-blue-600 focus:ring-[3px] focus:ring-blue-600/10" id="reason" placeholder="Nhập lý do đề nghị phúc khảo..."></textarea>
-                        </div>
-
-                        <div class="col-span-12 min-[801px]:col-span-6">
-                            <label class="mb-[7px] block font-[650]">Minh chứng đính kèm</label>
-
-                            <input class="w-full rounded-[9px] border border-slate-300 bg-white px-3 py-2.5 text-[#1f2937] outline-none focus:border-blue-600 focus:ring-[3px] focus:ring-blue-600/10" id="evidence" type="file" accept=".pdf,.jpg,.jpeg,.png">
-
-                            <small class="text-gray-500">
-                                Demo giao diện: PDF/JPG/PNG, tối đa 5MB.
-                            </small>
-                        </div>
-
-                        <div class="col-span-12 min-[801px]:col-span-6">
-                            <label class="mb-[7px] block font-[650]">Thông tin liên hệ</label>
-                            <input class="w-full rounded-[9px] border border-slate-300 bg-white px-3 py-2.5 text-[#1f2937] outline-none focus:border-blue-600 focus:ring-[3px] focus:ring-blue-600/10" id="contact" value="0901234567">
-                        </div>
-                    </div>
-
-                    <div class="mt-3.5 flex flex-wrap gap-2.5">
-                        <button class="inline-flex cursor-pointer items-center justify-center gap-2 rounded-[9px] px-[15px] py-2.5 font-bold bg-blue-600 text-white hover:bg-blue-700" type="button" onclick="reviewRequest()">
-                            Gửi đăng ký
-                        </button>
-
-                        <button class="inline-flex cursor-pointer items-center justify-center gap-2 rounded-[9px] px-[15px] py-2.5 font-bold bg-slate-200 text-slate-900" type="button" onclick="clearForm()">
-                            Nhập lại
-                        </button>
-                    </div>
-                </div>
-
-            <?php endif; ?>
-
-        </main>
-
-    </div>
-
-    <div id="confirmModal" class="modal fixed inset-0 z-[1000] hidden items-center justify-center bg-slate-900/55 p-[18px]">
-        <div class="w-full max-w-[620px] rounded-[14px] bg-white p-5 shadow-[0_20px_60px_rgba(0,0,0,0.2)]">
-            <div class="mb-3 flex items-center justify-between gap-4">
-                <h2 class="m-0 text-2xl font-bold">Xác nhận phiếu phúc khảo</h2>
-
-                <button class="cursor-pointer rounded-lg border-0 bg-slate-200 px-2.5 py-[7px]" type="button" onclick="closeModal('confirmModal')">
-                    ✕
-                </button>
-            </div>
-
-            <div id="confirmContent"></div>
-
-            <div class="mt-3.5 flex flex-wrap gap-2.5">
-                <button class="inline-flex cursor-pointer items-center justify-center gap-2 rounded-[9px] px-[15px] py-2.5 font-bold bg-slate-200 text-slate-900" type="button" onclick="closeModal('confirmModal')">
-                    Quay lại chỉnh sửa
-                </button>
-
-                <button class="inline-flex cursor-pointer items-center justify-center gap-2 rounded-[9px] px-[15px] py-2.5 font-bold bg-red-600 text-white" type="button" onclick="cancelRequest()">
-                    Hủy
-                </button>
-
-                <button class="inline-flex cursor-pointer items-center justify-center gap-2 rounded-[9px] px-[15px] py-2.5 font-bold bg-green-600 text-white" type="button" onclick="submitRequest()">
-                    Xác nhận gửi
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <div id="resultModal" class="modal fixed inset-0 z-[1000] hidden items-center justify-center bg-slate-900/55 p-[18px]">
-        <div class="w-full max-w-[620px] rounded-[14px] bg-white p-5 shadow-[0_20px_60px_rgba(0,0,0,0.2)]">
-            <div class="mb-3 flex items-center justify-between gap-4">
-                <h2 class="m-0 text-2xl font-bold">Kết quả</h2>
-
-                <button class="cursor-pointer rounded-lg border-0 bg-slate-200 px-2.5 py-[7px]" type="button" onclick="closeModal('resultModal')">
-                    ✕
-                </button>
-            </div>
-
-            <div id="resultContent"></div>
-
-            <div class="mt-3.5 flex flex-wrap gap-2.5">
-                <button class="inline-flex cursor-pointer items-center justify-center gap-2 rounded-[9px] px-[15px] py-2.5 font-bold bg-blue-600 text-white hover:bg-blue-700" type="button" onclick="closeModal('resultModal')">
-                    Đóng
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <script src="../../../assets/js/usecase-tailwind.js"></script>
-
-    <script>
-        const scenario = <?= json_encode($scenario) ?>;
-
-        function selectedSubjects() {
-            return [...document.querySelectorAll('.subject:checked')].map(x => ({
-                name: x.dataset.name,
-                score: x.dataset.score
-            }));
+try {
+    $db = PhatDb::connect();
+    $service = new PhatDangKyPhucKhao($db);
+    $evidenceReady = $service->evidenceReady();
+    $student = $service->student((int)$_SESSION['manguoidung']);
+    if ($student) {
+        [$canSubmit, $notAllowedReason] = $service->eligibility($student);
+        if (!$canSubmit) $notice = $notice ?: $notAllowedReason;
+        // Không rò rỉ điểm khi chưa có xác nhận công bố chính thức.
+        $isScorePublished = $service->scoreIsPublished((int)$student['makythi']) === true;
+        if ($isScorePublished && PhatDb::hasTable($db, 'baithi')) {
+            $papers = $service->examPapers((int)$student['mahocsinh']);
         }
-
-        function reviewRequest() {
-            clearAlert('formAlert');
-
-            const subjects = selectedSubjects();
-            const reason = document.getElementById('reason').value.trim();
-            const file = document.getElementById('evidence').files[0];
-            const contact = document.getElementById('contact').value;
-
-            if (!subjects.length) {
-                showAlert(
-                    'formAlert',
-                    'warning',
-                    'Vui lòng chọn ít nhất một môn cần phúc khảo.'
-                );
-                return;
-            }
-
-            if (!reason) {
-                showAlert(
-                    'formAlert',
-                    'danger',
-                    'Bạn đang nhập thiếu thông tin bắt buộc: Lý do phúc khảo.'
-                );
-                return;
-            }
-
-            if (file) {
-                const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png'];
-
-                if (!allowedTypes.includes(file.type) || file.size > 5 * 1024 * 1024) {
-                    showAlert(
-                        'formAlert',
-                        'danger',
-                        'Tệp minh chứng không hợp lệ. Vui lòng chọn lại tệp đúng định dạng và dung lượng.'
-                    );
-                    return;
+        if (PhatDb::hasTable($db, 'phieuphuckhao') && PhatDb::hasTable($db, 'chitietphuckhao')) {
+            $submittedIds = $service->existingPaperIds((int)$student['mahocsinh']);
+            $history = $service->requests((int)$student['mahocsinh']);
+            $evidenceNames = $service->evidenceNames((int)$student['mahocsinh']);
+            // Da phuc khao toan bo mon co diem: khong cho nhap va gui them phieu.
+            $allRegistered = count($papers) > 0;
+            foreach ($papers as $paper) {
+                if ($paper['diem'] === null || !in_array((int)$paper['mabaithi'], $submittedIds, true)) {
+                    $allRegistered = false;
+                    break;
                 }
             }
-
-            document.getElementById('confirmContent').innerHTML = `
-        <p>
-            <b>Môn đăng ký:</b>
-            ${subjects.map(s => `${s.name} (${s.score})`).join(', ')}
-        </p>
-
-        <p class="my-2"><b>Lý do:</b> ${reason}</p>
-        <p class="my-2"><b>Liên hệ:</b> ${contact}</p>
-        <p class="my-2"><b>Minh chứng:</b> ${file ? file.name : 'Không đính kèm'}</p>
-
-        <div class="my-3 rounded-[10px] border px-[15px] py-[13px] font-semibold border-blue-200 bg-blue-50 text-blue-800">
-            Kiểm tra lại thông tin trước khi xác nhận gửi.
-        </div>
-    `;
-
-            openModal('confirmModal');
+        } else {
+            $canSubmit = false;
+            $notice = 'Hệ thống chưa sẵn sàng tiếp nhận phiếu phúc khảo. Vui lòng thử lại sau.';
         }
-
-        function submitRequest() {
-            closeModal('confirmModal');
-
-            document.getElementById('resultContent').innerHTML =
-                scenario === 'save_error' ?
-                `
-            <div class="my-3 rounded-[10px] border px-[15px] py-[13px] font-semibold border-red-200 bg-red-50 text-red-800">
-                Đăng ký phúc khảo không thành công, vui lòng thử lại.
-                Hệ thống không tạo phiếu trùng.
-            </div>
-        ` :
-                `
-            <div class="my-3 rounded-[10px] border px-[15px] py-[13px] font-semibold border-green-200 bg-green-50 text-green-800">
-                Đăng ký phúc khảo thành công.
-            </div>
-
-            <p class="my-2"><b>Mã phiếu:</b> PK-2027-000128</p>
-
-            <p>
-                <b>Trạng thái:</b>
-                <span class="inline-block rounded-full px-[9px] py-[5px] text-xs font-extrabold bg-amber-100 text-amber-800">Chờ xử lý</span>
-            </p>
-        `;
-
-            openModal('resultModal');
+    } else {
+        $notice = 'Chưa tìm thấy hồ sơ dự thi gắn với tài khoản của bạn. Vui lòng liên hệ nhà trường.';
+    }
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        $reason = (string)($_POST['lydo'] ?? '');
+        $chosen = is_array($_POST['mabaithi'] ?? null) ? $_POST['mabaithi'] : [];
+        if (!hash_equals($_SESSION['pk_csrf'], (string)($_POST['csrf'] ?? ''))) {
+            $errors[] = 'Phiên làm việc đã thay đổi. Vui lòng tải lại trang rồi thử lại.';
+        } elseif ($allRegistered) {
+            $errors[] = 'Bạn đã đăng ký phúc khảo tất cả các môn thi. Không còn môn nào để đăng ký thêm.';
+        } elseif (!$canSubmit) {
+            $errors[] = $notice ?: 'Hiện chưa thể gửi phiếu phúc khảo.';
+        } elseif (($_POST['confirm'] ?? '') !== 'yes') {
+            $errors[] = 'Vui lòng xác nhận thông tin trước khi gửi.';
+        } else {
+            try {
+                $requestId = $service->submit((int)$_SESSION['manguoidung'], $chosen, $reason, $_FILES['minhchung'] ?? null);
+                $_SESSION['pk_message'] = 'Đã gửi phiếu phúc khảo số ' . $requestId . '. Nhà trường và Sở GD&ĐT sẽ tiếp nhận, xử lý theo quy định.';
+                $_SESSION['pk_csrf'] = bin2hex(random_bytes(32));
+                header('Location: /stackers_project/pages/hoc-sinh/dang-ky-phuc-khao/');
+                exit;
+            } catch (DomainException $e) {
+                $errors[] = $e->getMessage();
+            }
         }
-
-        function cancelRequest() {
-            closeModal('confirmModal');
-
-            document.getElementById('resultContent').innerHTML = `
-        <div class="my-3 rounded-[10px] border px-[15px] py-[13px] font-semibold border-blue-200 bg-blue-50 text-blue-800">
-            Đã hủy đăng ký.
-            Hệ thống không tạo phiếu phúc khảo.
-        </div>
-    `;
-
-            openModal('resultModal');
+    }
+    $db->close();
+} catch (Throwable $e) {
+    error_log('Phuc khao: ' . get_class($e) . ' - ' . $e->getMessage());
+    $errors[] = 'Không tải được dữ liệu phúc khảo. Vui lòng thử lại sau hoặc liên hệ nhà trường.';
+    $canSubmit = false;
+}
+?>
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Đăng ký phúc khảo | Stackers</title>
+<link rel="stylesheet" href="../../../assets/css/phat-tailwind.css">
+<style>
+.pk-wrap{box-sizing:border-box;margin-left:18rem;padding-top:5rem;min-height:100vh;background:#f7f9fc}.pk-main{box-sizing:border-box;max-width:1100px;margin:auto;padding:28px 24px 70px;color:#1f2937}.pk-card{background:#fff;border:1px solid #e2e8f0;border-radius:14px;box-shadow:0 2px 5px #0f172a0a;padding:22px;margin-top:16px}.pk-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.pk-stat{border:1px solid #e2e8f0;border-radius:12px;padding:14px;background:white;min-width:0}.pk-muted{font-size:13px;color:#64748b}.pk-title{font-size:27px;line-height:1.3;font-weight:750;margin:0 0 6px}.pk-table{width:100%;border-collapse:collapse;min-width:600px}.pk-table th,.pk-table td{padding:13px 10px;text-align:left;border-bottom:1px solid #e5e7eb;font-size:14px}.pk-table th{color:#64748b;background:#f8fafc;font-size:12px}.pk-overflow{overflow-x:auto}.pk-note{border:1px solid #bfdbfe;background:#eff6ff;padding:13px 15px;border-radius:10px;color:#1e40af;margin:14px 0;font-size:14px}.pk-danger{border-color:#fecaca;background:#fff1f2;color:#991b1b}.pk-success{border-color:#bbf7d0;background:#f0fdf4;color:#166534}.pk-button{border:0;border-radius:10px;background:#1d4ed8;color:white;font-size:14px;font-weight:650;padding:12px 20px;cursor:pointer}.pk-button:disabled{background:#94a3b8;cursor:not-allowed}.pk-input{display:block;width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:10px;padding:12px;font:inherit;margin-top:8px}.pk-history{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:14px 0;border-bottom:1px solid #e2e8f0}.pk-history:last-child{border-bottom:none}.pk-file-note{margin:8px 0 0;line-height:1.45}.pk-file-note strong{color:#1d4ed8}.pk-head{display:flex;flex-wrap:wrap;align-items:start;justify-content:space-between;gap:15px;margin-bottom:18px}
+@media(max-width:800px){body.pk-page>aside{display:none}.pk-wrap{margin-left:0}}@media(max-width:680px){.pk-main{padding:18px 12px 42px}.pk-grid{grid-template-columns:1fr}.pk-card{padding:15px}}
+</style></head>
+<body class="pk-page m-0 bg-slate-50 font-sans text-slate-800">
+<?php renderHeader(); renderSidebar(); ?>
+<div class="pk-wrap"><main class="pk-main">
+    <div class="pk-head"><div><h1 class="pk-title">Đăng ký phúc khảo bài thi</h1><p class="pk-muted">Chọn các môn cần phúc khảo, nhập lý do và gửi yêu cầu đến nhà trường.</p></div><a class="pk-muted" href="/stackers_project/pages/hoc-sinh/">Quay lại</a></div>
+    <?php if ($student): ?>
+    <div class="pk-grid">
+        <div class="pk-stat"><div class="pk-muted">Học sinh</div><b><?=pkH($student['hoten'] ?: 'Chưa cập nhật')?></b></div>
+        <div class="pk-stat"><div class="pk-muted">Số báo danh</div><b><?=pkH($student['sobaodanh'] ?: 'Chưa được cấp')?></b></div>
+        <div class="pk-stat"><div class="pk-muted">Kỳ thi / hạn nhận đơn</div><b><?=pkH($student['namtuyensinh'])?> · <?=pkH(pkDate($student['hanchotdangkyphuckhao']))?></b></div>
+    </div><?php endif; ?>
+    <?php if ($notice): ?><div class="pk-note <?=str_contains($notice, 'Đã gửi phiếu') ? 'pk-success' : ''?>" role="status"><?=pkH($notice)?></div><?php endif; ?>
+    <?php foreach ($errors as $error): ?><div class="pk-note pk-danger" role="alert"><?=pkH($error)?></div><?php endforeach; ?>
+    <section class="pk-card"><h2 class="m-0 text-xl font-bold"><?= $allRegistered ? 'Trạng thái đăng ký phúc khảo' : 'Chọn môn cần phúc khảo' ?></h2><p class="pk-muted"><?= $allRegistered ? 'Tất cả các môn thi đã có phiếu phúc khảo.' : 'Chỉ các môn đã có điểm và chưa đăng ký phúc khảo mới được chọn.' ?></p>
+    <?php if ($allRegistered): ?>
+    <div class="pk-note pk-success" role="status">
+        <strong>Bạn đã đăng ký phúc khảo tất cả <?=count($papers)?>/<?=count($papers)?> môn thi.</strong>
+        Không còn môn nào để đăng ký thêm. Bạn không cần gửi phiếu mới; hãy theo dõi trạng thái các phiếu tại mục <strong>Phiếu phúc khảo đã gửi</strong> bên dưới.
+    </div>
+    <?php endif; ?>
+    <form method="post" action="" id="pk-form" enctype="multipart/form-data">
+        <input type="hidden" name="csrf" value="<?=pkH($_SESSION['pk_csrf'])?>">
+        <div class="pk-overflow"><table class="pk-table"><thead><tr><th>Chọn</th><th>Môn thi</th><th>Điểm thi</th><th>Trạng thái</th></tr></thead><tbody>
+        <?php if (!$papers): ?><tr><td colspan="4"><?=pkH($isScorePublished ? 'Chưa có bài thi được cập nhật.' : 'Điểm thi chưa được công bố. Danh sách môn và điểm thi sẽ hiển thị sau khi có thông báo chính thức.')?></td></tr><?php endif; ?>
+        <?php foreach ($papers as $paper):
+            $duplicate = in_array((int)$paper['mabaithi'], $submittedIds, true);
+            $noScore = $paper['diem'] === null;
+            $disabled = !$canSubmit || $duplicate || $noScore;
+            $status = $duplicate ? 'Đã đăng ký' : ($noScore ? 'Chưa có điểm' : ($canSubmit ? 'Có thể đăng ký' : 'Tạm chưa tiếp nhận'));
+        ?>
+        <tr><td><input aria-label="Chọn môn <?=pkH($paper['tenmonhoc'])?>" data-mon="<?=pkH($paper['tenmonhoc'])?>" type="checkbox" name="mabaithi[]" value="<?=pkH($paper['mabaithi'])?>" <?= $disabled ? 'disabled' : '' ?> <?= in_array((string)$paper['mabaithi'], array_map('strval',$chosen), true) ? 'checked' : '' ?>></td>
+        <td><b><?=pkH($paper['tenmonhoc'])?></b></td><td><?=pkH(pkScore($paper['diem']))?></td><td><?=pkH($status)?></td></tr>
+        <?php endforeach; ?>
+        </tbody></table></div>
+        <?php if (!$allRegistered): ?>
+        <label for="pk-reason" class="block font-semibold mt-6">Lý do đề nghị phúc khảo</label>
+        <textarea class="pk-input" rows="4" maxlength="500" minlength="10" name="lydo" id="pk-reason" placeholder="Trình bày lý do bạn muốn phúc khảo bài thi..." <?=!$canSubmit?'disabled':''?> required><?=pkH($reason)?></textarea>
+        <p class="pk-muted">Từ 10 đến 500 ký tự. Chỉ gửi yêu cầu khi đã kiểm tra thông tin.</p>
+        <label for="pk-evidence" class="block font-semibold mt-5">File minh chứng <span class="pk-muted">(không bắt buộc)</span></label>
+        <input class="pk-input" type="file" name="minhchung" id="pk-evidence" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" <?=(!$canSubmit || !$evidenceReady)?'disabled':''?>>
+        <p class="pk-muted pk-file-note">Chấp nhận PDF, JPG, JPEG, PNG; tối đa <strong>5 MB</strong>. File được lưu riêng tư và gắn với phiếu vừa gửi.</p>
+        <?php if (!$evidenceReady): ?><p class="pk-muted pk-file-note">Tính năng đính kèm đang chờ cấu hình bảng <code>minhchungphuckhao</code> và thư mục lưu an toàn. Bạn vẫn có thể gửi phiếu không kèm file.</p><?php endif; ?>
+        <label class="block my-5 text-sm"><input name="confirm" value="yes" type="checkbox" <?=!$canSubmit?'disabled':''?> required> Tôi xác nhận các môn và thông tin đăng ký phúc khảo là chính xác.</label>
+        <button type="submit" class="pk-button" <?=!$canSubmit?'disabled':''?>>Gửi đăng ký phúc khảo</button>
+        <?php endif; ?>
+    </form></section>
+    <section class="pk-card"><h2 class="m-0 text-xl font-bold">Phiếu phúc khảo đã gửi</h2>
+        <?php if (!$history): ?><p class="pk-muted">Bạn chưa có phiếu phúc khảo nào.</p><?php endif; ?>
+        <?php foreach ($history as $item): ?><div class="pk-history"><div><b>Phiếu #<?=pkH($item['maphieu'])?></b> · <?=pkH($item['monhoc'])?><div class="pk-muted">Ngày gửi: <?=pkH(date('d/m/Y H:i', strtotime((string)$item['ngaytao'])))?></div><?php if (isset($evidenceNames[(int)$item['maphieu']])): ?><div class="pk-muted">Minh chứng: <?php if ($evidenceReady): ?><a href="tai-minh-chung.php?maphieu=<?=(int)$item['maphieu']?>" class="text-blue-700 underline"><?=pkH($evidenceNames[(int)$item['maphieu']])?></a><?php else: ?><?=pkH($evidenceNames[(int)$item['maphieu']])?><?php endif; ?></div><?php endif; ?></div><b><?=pkH(PhatDangKyPhucKhao::statusName((string)$item['trangthai']))?></b></div><?php endforeach; ?>
+    </section>
+</main></div>
+<script>
+document.getElementById('pk-form')?.addEventListener('submit', function (event) {
+    const selected = [...this.querySelectorAll('input[name="mabaithi[]"]:checked')].map(el => el.dataset.mon);
+    if (!selected.length) {
+        event.preventDefault();
+        alert('Vui lòng chọn ít nhất một môn cần phúc khảo.');
+        return;
+    }
+    const evidence = this.querySelector('#pk-evidence')?.files[0];
+    if (evidence) {
+        const ext = evidence.name.split('.').pop().toLowerCase();
+        if (!['pdf','jpg','jpeg','png'].includes(ext) || evidence.size === 0 || evidence.size > 5 * 1024 * 1024) {
+            event.preventDefault();
+            alert('Minh chứng phải là PDF/JPG/PNG và có dung lượng từ 1 byte đến 5 MB.');
+            return;
         }
-
-        function clearForm() {
-            document.getElementById('reason').value = '';
-            document.getElementById('contact').value = '0901234567';
-            document.getElementById('evidence').value = '';
-
-            document.querySelectorAll('.subject')
-                .forEach(x => x.checked = false);
-
-            clearAlert('formAlert');
-        }
-    </script>
-
-</body>
-
-</html>
+    }
+    if (!window.confirm('Xác nhận gửi phiếu phúc khảo cho: ' + selected.join(', ') + (evidence ? ' (kèm ' + evidence.name + ')' : '') + '?')) {
+        event.preventDefault();
+        return;
+    }
+    const button = this.querySelector('button[type=submit]');
+    if (button) { button.disabled = true; button.textContent = 'Đang gửi yêu cầu...'; }
+});
+</script>
+</body></html>
