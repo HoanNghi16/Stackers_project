@@ -18,7 +18,7 @@
     ?>
     <!-- MAIN CONTENT -->
     <?php
-        require("./danh-sach-truong.php");
+        require("./danh-sach-truong/index.php");
     ?>
 
 </body>
