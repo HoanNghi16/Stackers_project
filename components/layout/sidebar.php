@@ -11,6 +11,7 @@ function renderSidebar() {
         'THPT' => [
             ['ten' => 'Đăng ký chỉ tiêu', 'url' => '/stackers_project/pages/thpt/dang-ky-chi-tieu'],
             ['ten' => 'Danh sách học sinh nhập học', 'url' => '/stackers_project/pages/thpt/xem-danh-sach-hoc-sinh-nhap-hoc'],
+            ['ten' => 'Giáo viên tham gia hội đồng', 'url' => '/stackers_project/pages/thcs/chon-giao-vien'],
         ],
 
         'SO_GD' => [
