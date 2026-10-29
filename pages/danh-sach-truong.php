@@ -1,218 +1,94 @@
-<div class="">
-    <main class="bg-blue-600 pt-24 gap-2 mx-auto rounded-3xl w-full px-28 py-10">
-            <h1 class="text-2xl font-bold text-white">Danh sách trường tuyển sinh lớp 10</h1>
-            <p class="mt-1 text-sm text-gray-200">
-                Tra cứu các trường tham gia tuyển sinh và thông tin tuyển sinh liên quan.
-            </p>
-            <!-- Bộ lọc -->
-            <div class="mt-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                <div class="grid grid-cols-1 gap-4 md:grid-cols-12">
-                    <div class="md:col-span-6">
-                        <label for="schoolSearch" class="mb-1.5 block text-sm font-medium text-slate-700">
-                            Tìm kiếm theo tên trường
-                        </label>
-                        <input id="schoolSearch" type="text" placeholder="VD: Nguyễn Thượng Hiền..."
-                            oninput="filterSchools()"
-                            class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200">
-                    </div>
-
-                    <div class="md:col-span-3">
-                        <label for="areaFilter" class="mb-1.5 block text-sm font-medium text-slate-700">Phường</label>
-                        <select id="areaFilter" onchange="filterSchools()"
-                            class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200">
-                            <option value="">--Chọn phường--</option>
-                            <option value="Tân Bình">Tân Bình</option>
-                            <option value="Quận 1">Quận 1</option>
-                            <option value="Quận 3">Quận 3</option>
-                        </select>
-                    </div>
-
-                    <div class="md:col-span-3">
-                        <label for="typeFilter" class="mb-1.5 block text-sm font-medium text-slate-700">Loại trường</label>
-                        <select id="typeFilter" onchange="filterSchools()"
-                            class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200">
-                            <option value="">--Chọn loại trường--</option>
-                            <option value="thcs">THPT</option>
-                            <option value="thcs">THCS</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-
-
-    </main>
-    <div class="px-28">
-        <div id="noResult"
-            class="mt-6 hidden rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            Không tìm thấy trường phù hợp.
-        </div>
-
-            <!-- Danh sách trường -->
-        <div id="schoolGrid" class="mt-6 grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3"></div>
+<?php
+declare(strict_types=1);
+if (session_status() === PHP_SESSION_NONE) session_start();
+require_once __DIR__ . '/../../class/xem-danh-sach-truong.php';
+require_once __DIR__ . '/../../components/layout/header.php';
+require_once __DIR__ . '/../../components/layout/sidebar.php';
+function dstH(mixed $v): string { return PhatDb::escape($v); }
+$search = trim((string)($_GET['q'] ?? ''));
+$type = strtoupper(trim((string)($_GET['loai'] ?? '')));
+if (!in_array($type, ['THCS','THPT'], true)) $type = '';
+// Lọc theo quận/khu vực được ghi TRỰC TIẾP trong diachi. Không sử dụng maphuong sai.
+$area = trim((string)($_GET['khuvuc'] ?? ''));
+$selected = filter_input(INPUT_GET, 'truong', FILTER_VALIDATE_INT);
+$selected = ($selected !== false && $selected !== null && $selected > 0) ? $selected : 0;
+$schools = []; $areas = []; $exam = null; $failure = '';
+try {
+    $db = PhatDb::connect();
+    $ctrl = new PhatDanhSachTruong($db);
+    $exam = $ctrl->exam();
+    $areas = $ctrl->areas();
+    $schools = $ctrl->schools($search, $type, $area, (int)($exam['makythi'] ?? 0));
+    $db->close();
+} catch (Throwable $e) {
+    error_log('Danh sach truong: ' . get_class($e) . ' - ' . $e->getMessage());
+    $failure = 'Không thể tải danh sách trường. Vui lòng thử lại sau.';
+}
+// Chỉ hiện khu vực thực sự có trường thuộc loại đang lọc.
+$areaOptions = [];
+foreach ($areas as $a) {
+    $count = $type === 'THPT' ? (int)$a['so_thpt']
+           : ($type === 'THCS' ? (int)$a['so_thcs'] : (int)$a['so_truong']);
+    if ($count > 0 || (string)$a['khuvuc'] === $area) {
+        $a['so_truong_theo_loc'] = $count;
+        $areaOptions[] = $a;
+    }
+}
+$selectedSchool = null;
+foreach ($schools as $school) {
+    if ((int)$school['matruong'] === $selected) { $selectedSchool = $school; break; }
+}
+?>
+<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Danh sách trường | Stackers</title>
+<link rel="stylesheet" href="../../assets/css/phat-tailwind.css">
+<style>
+.dst-layout{margin-left:18rem;padding-top:5rem;min-height:100vh;background:#f8fafc;box-sizing:border-box}.dst-main{max-width:1180px;box-sizing:border-box;margin:auto;padding:28px 24px 60px;color:#1e293b}.dst-title{font-size:28px;line-height:1.3;margin:0 0 6px;font-weight:750}.dst-sub{color:#64748b;font-size:14px}.dst-panel{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:20px;margin-top:18px;box-shadow:0 2px 6px #0f172a0a}.dst-filter{display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:12px;align-items:end}.dst-field label{display:block;font-size:13px;font-weight:600;color:#334155;margin-bottom:7px}.dst-field input,.dst-field select{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:9px;padding:10px 12px;background:white;font:inherit;font-size:14px}.dst-button{border:0;border-radius:10px;background:#1d4ed8;color:#fff;padding:11px 18px;font-weight:650;cursor:pointer}.dst-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px;margin-top:18px}.dst-school{background:#fff;border:1px solid #e2e8f0;border-radius:13px;padding:18px;min-width:0}.dst-school h2{font-size:18px;margin:8px 0 12px;color:#0f172a}.dst-pill{font-size:12px;font-weight:700;border-radius:99px;padding:5px 9px;background:#dbeafe;color:#1d4ed8}.dst-info{font-size:14px;color:#475569;margin:7px 0;overflow-wrap:anywhere}.dst-link{display:inline-flex;margin-top:8px;color:#1d4ed8;font-size:14px;font-weight:650;text-decoration:none}.dst-detail{border-color:#93c5fd;background:#eff6ff}.dst-notice{border:1px solid #fecaca;background:#fff1f2;color:#991b1b;border-radius:10px;padding:15px;margin-top:16px}
+@media(max-width:1000px){.dst-filter{grid-template-columns:1fr 1fr}.dst-grid{grid-template-columns:1fr}}@media(max-width:800px){body.dst-page>aside{display:none}.dst-layout{margin-left:0}}@media(max-width:600px){.dst-main{padding:18px 12px 40px}.dst-filter{grid-template-columns:1fr}.dst-panel{padding:14px}}
+</style></head>
+<body class="dst-page m-0 bg-slate-50 font-sans">
+<?php renderHeader();renderSidebar(); ?>
+<div class="dst-layout"><main class="dst-main">
+    <h1 class="dst-title">Danh sách trường tuyển sinh lớp 10</h1>
+    <p class="dst-sub">Tìm kiếm trường theo tên, loại và quận/khu vực ghi trong địa chỉ. <?= $exam ? 'Kỳ tuyển sinh '.dstH($exam['namtuyensinh']).'.' : '' ?></p>
+    <form class="dst-panel dst-filter" method="get" action="">
+        <div class="dst-field"><label for="q">Tên trường</label><input id="q" type="search" maxlength="100" name="q" value="<?=dstH($search)?>" placeholder="Nhập tên trường cần tìm..."></div>
+        <div class="dst-field"><label for="loai">Loại trường</label><select name="loai" id="loai" onchange="this.form.elements['khuvuc'].value='';this.form.requestSubmit();"><option value="">Tất cả</option><option value="THCS" <?=$type==='THCS'?'selected':''?>>THCS</option><option value="THPT" <?=$type==='THPT'?'selected':''?>>THPT</option></select></div>
+        <div class="dst-field"><label for="khuvuc">Quận / Khu vực</label><select name="khuvuc" id="khuvuc"><option value="">Tất cả</option><?php foreach ($areaOptions as $a): ?><option value="<?=dstH($a['khuvuc'])?>" <?=(string)$a['khuvuc']===$area?'selected':''?>><?=dstH($a['khuvuc'])?> (<?=(int)$a['so_truong_theo_loc']?> trường)</option><?php endforeach;?></select></div>
+        <button class="dst-button" type="submit">Tìm kiếm</button>
+    </form>
+    <p class="dst-sub mt-3">Lưu ý: Database hiện chỉ ghi quận/khu vực trong địa chỉ, chưa có phường cụ thể để xác minh. Bộ lọc này không dùng giá trị <code>maphuong</code> đang bị gán sai.</p>
+    <?php if ($failure): ?><div class="dst-notice"><?=dstH($failure)?></div><?php else: ?>
+    <p class="dst-sub mt-5">Tìm thấy <b><?=count($schools)?></b> trường phù hợp.</p>
+    <?php if ($selectedSchool): ?>
+        <section class="dst-panel dst-detail" aria-label="Thông tin chi tiết trường">
+            <h2 class="text-xl font-bold mb-2"><?=dstH($selectedSchool['tentruong'])?></h2>
+            <p class="dst-info"><b>Loại trường:</b> <?=dstH($selectedSchool['loaitruong'])?></p>
+            <p class="dst-info"><b>Địa chỉ:</b> <?=dstH($selectedSchool['diachi'] ?: 'Chưa cập nhật')?></p>
+            <p class="dst-info"><b>Quận/Khu vực:</b> <?=dstH($selectedSchool['khuvuc'] ?: 'Chưa cập nhật')?></p>
+            <p class="dst-info"><b>Điểm thi:</b> <?= (string)$selectedSchool['ladiemthi']==='1' ? 'Có' : 'Không' ?></p>
+            <p class="dst-info"><b>Chỉ tiêu tuyển sinh đã duyệt:</b> <?= $selectedSchool['chitieu'] === null ? 'Chưa công bố' : dstH($selectedSchool['chitieu']).' học sinh' ?></p>
+            <a class="dst-link" href="?<?=dstH(http_build_query(['q'=>$search,'loai'=>$type,'khuvuc'=>$area]))?>">Thu gọn chi tiết</a>
+        </section>
+    <?php endif; ?>
+    <div class="dst-grid">
+        <?php if (!$schools): ?><div class="dst-panel">
+            <?php if ($area !== ''): ?>
+                Không tìm thấy trường <?=dstH($type ?: 'THCS/THPT')?> phù hợp tại khu vực <b><?=dstH($area)?></b>.
+                Thử khu vực khác hoặc <a class="dst-link" href="?<?=dstH(http_build_query(['q'=>$search,'loai'=>$type,'khuvuc'=>'']))?>">bỏ lọc khu vực</a>.
+            <?php else: ?>
+                Không tìm thấy trường phù hợp. Bạn hãy thay đổi từ khóa hoặc bộ lọc.
+            <?php endif; ?>
+        </div><?php endif; ?>
+        <?php foreach ($schools as $s): ?>
+        <article class="dst-school"><span class="dst-pill"><?=dstH($s['loaitruong'])?></span>
+            <h2><?=dstH($s['tentruong'])?></h2>
+            <p class="dst-info"><b>Địa chỉ:</b> <?=dstH($s['diachi'] ?: 'Chưa cập nhật')?></p>
+            <p class="dst-info"><b>Quận/Khu vực:</b> <?=dstH($s['khuvuc'] ?: 'Chưa cập nhật')?></p>
+            <p class="dst-info"><b>Chỉ tiêu đã duyệt:</b> <?= $s['chitieu'] === null ? 'Chưa công bố' : dstH($s['chitieu']).' học sinh' ?></p>
+            <a class="dst-link" href="?<?=dstH(http_build_query(['q'=>$search,'loai'=>$type,'khuvuc'=>$area,'truong'=>$s['matruong']]))?>">Xem chi tiết trường</a>
+        </article>
+        <?php endforeach; ?>
     </div>
-            
-</div>
-
-<!-- Modal chi tiết -->
-<div id="schoolModal"
-    class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 p-4"
-    onclick="if (event.target === this) closeModal('schoolModal')">
-    <div class="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-xl">
-
-        <div class="mb-4 flex items-start justify-between gap-4">
-            <h2 id="schoolTitle" class="text-lg font-semibold text-slate-900">Chi tiết trường</h2>
-            <button type="button" onclick="closeModal('schoolModal')" aria-label="Đóng"
-                class="rounded-md p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600">
-                ✕
-            </button>
-        </div>
-
-        <div id="schoolDetail"></div>
-
-        <div class="mt-6 flex justify-end">
-            <button type="button" onclick="closeModal('schoolModal')"
-                class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-300">
-                Quay lại danh sách
-            </button>
-        </div>
-    </div>
-</div>
-
-<script>
-    const schools = [{
-            id: 1,
-            name: 'THPT Nguyễn Thượng Hiền',
-            type: 'Công lập',
-            area: 'Tân Bình',
-            address: '649 Hoàng Văn Thụ, Tân Bình, TP.HCM',
-            quota: 730,
-            method: 'Thi tuyển',
-            note: 'Tuyển sinh lớp 10 theo kế hoạch của Sở GD&ĐT.'
-        },
-        {
-            id: 2,
-            name: 'THPT Bùi Thị Xuân',
-            type: 'Công lập',
-            area: 'Quận 1',
-            address: '73-75 Bùi Thị Xuân, Quận 1, TP.HCM',
-            quota: 700,
-            method: 'Thi tuyển',
-            note: 'Thông tin minh họa cho giao diện.'
-        },
-        {
-            id: 3,
-            name: 'THPT Chuyên Lê Hồng Phong',
-            type: 'Chuyên',
-            area: 'Quận 3',
-            address: '235 Nguyễn Văn Cừ, Quận 5, TP.HCM',
-            quota: 500,
-            method: 'Thi tuyển + môn chuyên',
-            note: 'Thông tin minh họa cho giao diện.'
-        }
-    ];
-
-    const badgeClass = {
-        'Chuyên': 'bg-amber-100 text-amber-800',
-        'Công lập': 'bg-blue-100 text-blue-800'
-    };
-
-    function openModal(id) {
-        const el = document.getElementById(id);
-        el.classList.remove('hidden');
-        el.classList.add('flex');
-    }
-
-    function closeModal(id) {
-        const el = document.getElementById(id);
-        el.classList.add('hidden');
-        el.classList.remove('flex');
-    }
-
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') closeModal('schoolModal');
-    });
-
-    function renderSchools(list) {
-        const grid = document.getElementById('schoolGrid');
-        if (!grid) return;
-
-        grid.innerHTML = list.map(school => `
-            <article class="flex flex-col rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                <span class="w-fit rounded-full px-2.5 py-0.5 text-xs font-medium ${badgeClass[school.type] || 'bg-slate-100 text-slate-700'}">
-                    ${school.type}
-                </span>
-
-                <h3 class="mt-3 text-base font-semibold text-slate-900">${school.name}</h3>
-
-                <dl class="mt-2 space-y-1 text-sm text-slate-600">
-                    <div><dt class="inline font-medium text-slate-700">Khu vực:</dt> <dd class="inline">${school.area}</dd></div>
-                    <div><dt class="inline font-medium text-slate-700">Địa chỉ:</dt> <dd class="inline">${school.address}</dd></div>
-                </dl>
-
-                <div class="mt-auto pt-4">
-                    <button type="button" onclick="viewSchool(${school.id})"
-                        class="rounded-lg bg-blue-600 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-300">
-                        Xem chi tiết
-                    </button>
-                </div>
-            </article>
-        `).join('');
-
-        document.getElementById('noResult').classList.toggle('hidden', list.length > 0);
-    }
-
-    function filterSchools() {
-        const keyword = document.getElementById('schoolSearch').value.trim().toLowerCase();
-        const area = document.getElementById('areaFilter').value;
-        const type = document.getElementById('typeFilter').value;
-
-        renderSchools(schools.filter(school =>
-            school.name.toLowerCase().includes(keyword) &&
-            (!area || school.area === area) &&
-            (!type || school.type === type)
-        ));
-    }
-
-    function viewSchool(id) {
-        const title = document.getElementById('schoolTitle');
-        const detail = document.getElementById('schoolDetail');
-
-        if (scenario === 'detail_error') {
-            title.textContent = 'Không thể tải thông tin';
-            detail.innerHTML = `
-                <div class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                    Không thể tải thông tin chi tiết của trường.
-                </div>`;
-            openModal('schoolModal');
-            return;
-        }
-
-        const school = schools.find(s => s.id === id);
-        if (!school) return;
-
-        const rows = [
-            ['Loại trường', school.type],
-            ['Khu vực', school.area],
-            ['Địa chỉ', school.address],
-            ['Chỉ tiêu', `${school.quota} học sinh`],
-            ['Phương thức tuyển sinh', school.method],
-            ['Thông tin liên quan', school.note]
-        ];
-
-        title.textContent = school.name;
-        detail.innerHTML = `
-            <table class="w-full text-sm">
-                <tbody class="divide-y divide-slate-100">
-                    ${rows.map(([label, value]) => `
-                        <tr>
-                            <th class="w-2/5 py-2.5 pr-4 text-left align-top font-medium text-slate-500">${label}</th>
-                            <td class="py-2.5 text-slate-800">${value}</td>
-                        </tr>`).join('')}
-                </tbody>
-            </table>`;
-
-        openModal('schoolModal');
-    }
-
-    renderSchools(schools);
-</script>
+    <?php endif; ?>
+</main></div></body></html>
