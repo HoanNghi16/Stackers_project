@@ -57,9 +57,9 @@
                 </label>
                 <input 
                     id="email"
-                    type="email" 
+                    type="text" 
                     name="email"
-                    placeholder="Nhập email..."
+                    placeholder="Nhập email hoặc số CCCD..."
                     class="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     required
                 >

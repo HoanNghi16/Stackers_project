@@ -15,6 +15,7 @@
 <body>
     <?php
         renderHeader();
+        
     ?>
     <!-- MAIN CONTENT -->
     <?php

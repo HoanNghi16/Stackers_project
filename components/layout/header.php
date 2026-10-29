@@ -1,27 +1,5 @@
 <?php
 // ---- Sample data (replace with your DB query) ---------------------------
-$wardOptions = [
-    ''       => '--- Phường/Xã ---',
-    '26732'  => 'Đặc khu Côn Đảo',
-    '27316'  => 'Phường An Đông',
-    '26878'  => 'Phường An Hội Đông',
-    // ... populate the rest from your database query, same as the original.
-];
-
-$schoolOptions = [
-    ''         => '--- Chọn ---',
-    '74000707' => 'Trường THPT Chuyên Hùng Vương',
-    '74000702' => 'Trường THPT Võ Minh Đức',
-    '74000708' => 'Trường THPT Nguyễn Đình Chiểu',
-    // ... populate the rest from your database query, same as the original.
-];
-
-$loaiHinhOptions = [
-    '1' => 'THPT Công lập',
-    '2' => 'THPT ngoài Công lập',
-    '3' => 'TT GDNN-GDTX',
-    '4' => 'Trung cấp, cao đẳng nghề',
-];
 
 $navItems = [
     ['href' => '/stackers_project/pages',                    'label' => 'Trang chủ',                  'active' => true],
@@ -52,7 +30,7 @@ function renderHeader()
 {
     global $wardOptions, $schoolOptions, $loaiHinhOptions, $navItems, $selectClass;
     ?>
-    <header class="fixed w-full h-20 bg-gradient-to-b from-blue-700 via-blue-700 to-blue-600 text-white">
+    <header class="fixed top-0 z-50 w-full h-20 bg-gradient-to-b from-blue-700 via-blue-700 to-blue-600 text-white">
         <!-- ============ Top bar: logo + nav + CTA ============ -->
         <div class="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
 
@@ -86,11 +64,33 @@ function renderHeader()
             <div class="hidden lg:block">
                 <?php
                     if (isset($_SESSION['vaitro']) || isset($_SESSION['manguoidung'])){
+                        $site = "/";
+                        if ($_SESSION['vaitro'] == "THPT"){
+                            $site = "thpt";
+                        }
+                        if ($_SESSION['vaitro'] == "THCS"){
+                            $site = "thcs";
+                        }
+                        if ($_SESSION['vaitro'] == "SO_GD"){
+                            $site = "so-gd";
+                        }
+                        if ($_SESSION['vaitro'] == "HOC_SINH"){
+                            $site = "hoc-sinh";
+                        }
+                        $ten = 'UNKNOW';
+                        if (isset($_SESSION['ten'])){
+                            $ten = $_SESSION['ten'];
+                        }
+
                         echo '
+                            <a href="/stackers_project/pages/'.$site.'"
+                            class="inline-flex items-center gap-2 rounded-xl bg-blue-50 px-3 py-2 text-sm text-blue-700 transition hover:bg-blue-100">
+                                <span class="font-medium">Xin chào, '.$ten.'.</span>
+                                <span class="text-xs text-blue-500">Vào dashboard</span>
+                            </a>
                             <a
                                 href="/stackers_project/pages/logout/"
-                                class="rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-blue-700
-                                        shadow-sm transition hover:bg-red-50">
+                                class="inline-flex items-center gap-2 rounded-xl bg-blue-50 px-3 py-2 text-sm text-blue-700 transition hover:bg-blue-100">
                                 Đăng xuất
                             </a>
 
@@ -99,8 +99,7 @@ function renderHeader()
                         echo '
                             <a
                                 href="/stackers_project/pages/login"
-                                class="rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-blue-700
-                                        shadow-sm transition hover:bg-red-50">
+                                class="inline-flex items-center gap-2 rounded-xl bg-blue-50 px-3 py-2 text-sm text-blue-700 transition hover:bg-blue-100">
                                 Đăng nhập
                             </a>
                         ';

@@ -12,10 +12,10 @@
             $hashedPassword = sha1($password);
 
             $stmt = $this->conn->prepare(
-                "SELECT * FROM nguoidung WHERE email = ?"
+                "SELECT email, nd.manguoidung, vaitro, hs.ten, hs.anhdaidien, matkhau FROM nguoidung nd LEFT JOIN hosonguoidung hs ON nd.manguoidung = hs.manguoidung WHERE nd.email = ? OR hs.socccd=?"
             );
 
-            $stmt->bind_param("s", $email);
+            $stmt->bind_param("ss", $email, $email);
             $stmt->execute();
 
             $result = $stmt->get_result();
@@ -29,6 +29,8 @@
                 }
                 $_SESSION['manguoidung'] = $user['manguoidung'];
                 $_SESSION['vaitro'] = $user['vaitro'];
+                $_SESSION['ten'] = $user['ten'];
+                $_SESSION['anhdaidien'] = $user['anhdaidien'];
                 return true;
             }
 
