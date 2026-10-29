@@ -61,7 +61,7 @@
                         UNION
                         SELECT magiaovien FROM phancongrade
                     )
-                    AND mamonhoc = ?";
+                    AND mamonhoc = ? AND nd.vaitro IN ('THPT', 'THCS')";
 
             $stmt = $this->conn->prepare($sql);
             $stmt->bind_param("i", $mamon);
@@ -88,6 +88,7 @@
                         UNION
                         SELECT magiaovien FROM phancongrade
                     )
+                    AND nd.vaitro IN ('THPT', 'THCS')
                 ";
 
             $stmt = $this->conn->prepare($sql);
