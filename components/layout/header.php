@@ -77,7 +77,7 @@ function renderHeader()
                         if ($_SESSION['vaitro'] == "HOC_SINH"){
                             $site = "hoc-sinh";
                         }
-                        $ten = 'UNKNOW';
+                        $ten = 'UNKNOWN';
                         if (isset($_SESSION['ten'])){
                             $ten = $_SESSION['ten'];
                         }
