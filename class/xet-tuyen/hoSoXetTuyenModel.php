@@ -70,6 +70,11 @@ class HoSoXetTuyenModel extends \BaseModel
                 ON th.matruong = hs.matruongdanghoc
 
             WHERE hs.makythi = ?
+              -- Chỉ xét tuyển học sinh đã đăng ký nguyện vọng
+              AND EXISTS (
+                  SELECT 1 FROM nguyenvong nvx
+                  WHERE nvx.mahocsinh = hs.mahocsinh
+              )
 
             ORDER BY
                 ho.ho,
@@ -96,6 +101,7 @@ class HoSoXetTuyenModel extends \BaseModel
                 nv.mahocsinh,
                 nv.thutunguyenvong,
                 nv.matruong,
+                nv.trangthaixettuyen,
                 th.tentruong
 
             FROM nguyenvong nv
@@ -131,7 +137,7 @@ class HoSoXetTuyenModel extends \BaseModel
             $nguyenVong[$maHS][] = $nv;
         }
 
-        // Ghép nguyện vọng vào hồ sơ
+        // Ghép nguyện vọng và xác định trạng thái xét tuyển cho từng học sinh
         foreach ($dsHoSo as &$hs) {
             $maHS = (int) $hs['mahocsinh'];
 
@@ -140,6 +146,35 @@ class HoSoXetTuyenModel extends \BaseModel
 
             $hs['coDangKyNguyenVong'] =
                 !empty($hs['nguyenvong']);
+
+            // Lấy trạng thái thực tế từ các nguyện vọng trong database.
+            $cacTrangThai = array_column(
+                $hs['nguyenvong'],
+                'trangthaixettuyen'
+            );
+
+            if (in_array('XAC_NHAN_NHAP_HOC', $cacTrangThai, true)) {
+                $hs['trangThaiXetTuyenMa'] = 'XAC_NHAN_NHAP_HOC';
+                $hs['trangThaiXetTuyen'] = 'Đã xác nhận nhập học';
+            } elseif (in_array('DAU', $cacTrangThai, true)) {
+                $hs['trangThaiXetTuyenMa'] = 'DAU';
+                $hs['trangThaiXetTuyen'] = 'Đậu';
+            } elseif (in_array('DANG_XET', $cacTrangThai, true)) {
+                $hs['trangThaiXetTuyenMa'] = 'DANG_XET';
+                $hs['trangThaiXetTuyen'] = 'Đang xét tuyển';
+            } elseif (
+                !empty($cacTrangThai)
+                && count(array_filter(
+                    $cacTrangThai,
+                    static fn($trangThai) => $trangThai === 'ROT'
+                )) === count($cacTrangThai)
+            ) {
+                $hs['trangThaiXetTuyenMa'] = 'ROT';
+                $hs['trangThaiXetTuyen'] = 'Rớt';
+            } else {
+                $hs['trangThaiXetTuyenMa'] = 'CHUA_DANG_KY';
+                $hs['trangThaiXetTuyen'] = 'Chưa đăng ký nguyện vọng';
+            }
         }
 
         unset($hs);
@@ -231,6 +266,7 @@ class HoSoXetTuyenModel extends \BaseModel
                 bt.diem,
                 bt.tyletrudiem,
                 bt.lydotrudiem,
+                bt.vang,
                 heso.giatri AS heso
 
             FROM baithi bt
