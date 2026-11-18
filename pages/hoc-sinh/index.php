@@ -120,7 +120,7 @@
 
 
                 <!-- Xem lịch thi -->
-                <a href="lich-thi/"
+                <a href="xem-lich-thi/"
                    class="group bg-white border border-slate-200
                           rounded-2xl p-6 shadow-sm
                           hover:shadow-xl hover:shadow-blue-100/70
@@ -230,7 +230,7 @@
 
 
                 <!-- Tra cứu kết quả thi -->
-                <a href="ket-qua-thi/"
+                <a href="tra-cuu-ket-qua-thi-trung-tuyen/"
                    class="group bg-white border border-slate-200
                           rounded-2xl p-6 shadow-sm
                           hover:shadow-xl hover:shadow-emerald-100/70
@@ -283,7 +283,7 @@
                 </a>
 
                 <!-- Đăng ký phúc khảo -->
-                <a href="phuc-khao/"
+                <a href="dang-ky-phuc-khao/"
                    class="group bg-white border border-slate-200
                           rounded-2xl p-6 shadow-sm
                           hover:shadow-xl hover:shadow-amber-100/70
@@ -340,7 +340,7 @@
                 </a>
 
                 <!-- Xem địa điểm thi -->
-                <a href="dia-diem-thi/"
+                <a href="xem-ds-diem-thi/"
                    class="group bg-white border border-slate-200
                           rounded-2xl p-6 shadow-sm
                           hover:shadow-xl hover:shadow-violet-100/70

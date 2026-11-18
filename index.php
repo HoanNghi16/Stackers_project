@@ -15,5 +15,9 @@
         die("Kết nối MySQL thất bại: " . $conn->connect_error);
      
     }
+    $pathname = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+    if ($pathname == "/stackers_project/"){
+        header("Location: /stackers_project/pages");
+    }
     $conn->set_charset("utf8mb4");
 ?>
