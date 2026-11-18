@@ -45,6 +45,25 @@ function ngaySinhXT($value): string
         : (string) $value;
 }
 
+/** UU_TIEN -> "Ưu tiên", KHUYEN_KHICH -> "Khuyến khích" */
+function tenLoaiTieuChuanXT($loai): string
+{
+    return match (strtoupper((string)$loai)) {
+        'UU_TIEN'      => 'Ưu tiên',
+        'KHUYEN_KHICH' => 'Khuyến khích',
+        default        => (string)$loai,
+    };
+}
+
+/** Viết hoa chữ cái đầu: "con liệt sĩ" -> "Con liệt sĩ" */
+function vietHoaDauXT($chuoi): string
+{
+    $chuoi = trim((string)$chuoi);
+    return $chuoi === ''
+        ? ''
+        : mb_strtoupper(mb_substr($chuoi, 0, 1)) . mb_substr($chuoi, 1);
+}
+
 if (empty($_SESSION['csrf_xettuyen'])) {
     $_SESSION['csrf_xettuyen'] = bin2hex(random_bytes(32));
 }
@@ -193,7 +212,7 @@ try {
                         $kq = [
                             'thanhCong' => $daLuu,
                             'thongBao' => $daLuu
-                                ? 'Kết quả xét tuyển đã lưu tạm trong phiên làm việc (chưa ghi vào MySQL).'
+                                ? 'Kết quả xét tuyển đã lưu tạm trong phiên làm việc.'
                                 : 'Không thể lưu bản nháp vào phiên làm việc.',
                         ];
                     } else {
@@ -230,7 +249,9 @@ try {
                         'tieuDe' => !empty($kq['thanhCong'])
                             ? ($hanhDong === 'luu' ? 'Lưu tạm thành công' : 'Xác nhận thành công')
                             : ($hanhDong === 'luu' ? 'Không thể lưu tạm' : 'Không thể xác nhận kết quả'),
-                        'noiDung' => $kq['thongBao'] ?? 'Thao tác không thành công.'
+                        'noiDung' => ($hanhDong === 'xacNhan' && !empty($kq['thanhCong']))
+                            ? 'Xác nhận kết quả thành công.'
+                            : ($kq['thongBao'] ?? 'Thao tác không thành công.')
                     ];
                     // Chỉ hiển thị phản hồi qua popup, không hiện banner phía trên.
                     $thongBao = '';
@@ -562,47 +583,45 @@ renderSidebar();
 
                 </div>
 
-                <!-- ĐIỂM CỘNG -->
-                <div>
+                <!-- ĐIỂM CỘNG: ƯU TIÊN | KHUYẾN KHÍCH -->
+                <?php
+                $dsUuTien = array_filter($tieuChi['congDiem'] ?? [], static fn($tc) => strtoupper((string)$tc['loaitieuchuan']) === 'UU_TIEN');
+                $dsKhuyenKhich = array_filter($tieuChi['congDiem'] ?? [], static fn($tc) => strtoupper((string)$tc['loaitieuchuan']) !== 'UU_TIEN');
+                ?>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
 
-                    <h3 class="font-medium mb-2">
-                        Điểm ưu tiên / khuyến khích
-                    </h3>
+                    <div>
+                        <h3 class="font-medium mb-2">Điểm ưu tiên</h3>
+                        <?php if ($dsUuTien): ?>
+                            <?php foreach ($dsUuTien as $tc): ?>
+                                <p class="mb-1 text-slate-600">
+                                    <?= hXT(vietHoaDauXT($tc['dieukienapdung'])) ?>:
+                                    <span class="font-semibold text-blue-700">+<?= hXT(number_format((float)$tc['diemcong'], 2, '.', '')) ?></span>
+                                </p>
+                            <?php endforeach; ?>
+                        <?php else: ?>
+                            <p class="text-slate-500">Chưa có tiêu chuẩn ưu tiên.</p>
+                        <?php endif; ?>
+                    </div>
 
-                    <?php if (!empty($tieuChi['congDiem'])): ?>
-
-                        <?php foreach (
-                            $tieuChi['congDiem'] as $tc
-                        ): ?>
-
-                            <p class="mb-1 text-slate-600">
-
-                                <?= hXT($tc['loaitieuchuan']) ?>
-
-                                –
-
-                                <?= hXT($tc['dieukienapdung']) ?>
-
-                                :
-
-                                +<?= hXT($tc['diemcong']) ?>
-
-                            </p>
-
-                        <?php endforeach; ?>
-
-                    <?php else: ?>
-
-                        <p class="text-slate-500">
-                            Chưa có tiêu chuẩn cộng điểm.
-                        </p>
-
-                    <?php endif; ?>
+                    <div>
+                        <h3 class="font-medium mb-2">Điểm khuyến khích</h3>
+                        <?php if ($dsKhuyenKhich): ?>
+                            <?php foreach ($dsKhuyenKhich as $tc): ?>
+                                <p class="mb-1 text-slate-600">
+                                    <?= hXT(vietHoaDauXT($tc['dieukienapdung'])) ?>:
+                                    <span class="font-semibold text-blue-700">+<?= hXT(number_format((float)$tc['diemcong'], 2, '.', '')) ?></span>
+                                </p>
+                            <?php endforeach; ?>
+                        <?php else: ?>
+                            <p class="text-slate-500">Chưa có tiêu chuẩn khuyến khích.</p>
+                        <?php endif; ?>
+                    </div>
 
                 </div>
 
                 <div class="border-t pt-4">
-                    <h3 class="font-medium mb-2">Chỉ tiêu tuyển sinh từ database</h3>
+                    <h3 class="font-medium mb-2">Chỉ tiêu tuyển sinh lớp 10</h3>
                     <?php if (!empty($dl['dsChiTieu'])): ?>
                         <div class="grid md:grid-cols-2 gap-2">
                         <?php foreach ($dl['dsChiTieu'] as $ct): ?>
