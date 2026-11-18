@@ -1,51 +1,345 @@
 <?php
-// Giao diện minh họa theo đặc tả use case. Dữ liệu mẫu tại trình duyệt, chưa ghi vào CSDL.
-$pageTitle = "Stackers - Nhập điểm phúc khảo";
+use NhapDiemPhucKhao\CtrlNhapDiemPhucKhao;
+
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    session_start();
+}
+
+require_once __DIR__ . '/../../../index.php';
+require_once __DIR__ . '/../../../class/nhap-diem-phuc-khao/ctrlNhapDiemPhucKhao.php';
+require_once __DIR__ . '/../../../components/layout/header.php';
+require_once __DIR__ . '/../../../components/layout/sidebar.php';
+
+// Kiểm tra quyền Sở GD&ĐT (giống trang Xét tuyển)
+if (($env['DEV_FAKE_LOGIN'] ?? '') === '1' && empty($_SESSION['vaitro'])) {
+    $_SESSION['vaitro'] = 'SO_GD';
+}
+if (($_SESSION['vaitro'] ?? '') !== 'SO_GD') {
+    header('Location: /stackers_project/pages/login');
+    exit;
+}
+
+function hPK($value): string
+{
+    return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
+}
+
+function diemPK($value): string
+{
+    return $value === null || $value === '' ? '—' : number_format((float)$value, 2, '.', '');
+}
+
+function trangThaiPK(string $tt): array
+{
+    return match ($tt) {
+        'HOAN_THANH'     => ['Đã cập nhật kết quả', 'bg-green-100 text-green-700'],
+        'DANG_PHUC_KHAO' => ['Đang phúc khảo', 'bg-blue-100 text-blue-700'],
+        'TU_CHOI'        => ['Từ chối', 'bg-red-100 text-red-700'],
+        'CHO_XU_LY'   => ['Chờ xử lý', 'bg-amber-100 text-amber-700'],
+        default       => [$tt, 'bg-slate-100 text-slate-700'],
+    };
+}
+
+if (empty($_SESSION['csrf_phuckhao'])) {
+    $_SESSION['csrf_phuckhao'] = bin2hex(random_bytes(32));
+}
+
+$ctrl = new CtrlNhapDiemPhucKhao($conn);
+
+$thongBao = '';
+$popup = null;
+$hienXacNhan = false;
+$doiChieu = [];
+$loiDiem = [];
+$diemDaGo = [];
+
+$form = $ctrl->yeuCauForm();
+$ky = $form['ky'];
+$dsPhieu = $form['dsPhieu'];
+$thongBao = $form['thongBao'];
+$maKy = $ky ? (int)$ky['makythi'] : 0;
+
+// Phiếu đang chọn (bước 5)
+$maPhieu = (int)($_GET['phieu'] ?? 0);
+$ct = $maPhieu > 0 && $ky ? $ctrl->chonPhieu($maKy, $maPhieu) : null;
+if ($ct && !$ct['thanhCong']) {
+    $thongBao = $ct['thongBao'];
+    $ct = null;
+}
+
+$khoaNhap = !empty($form['khoaNhap']); // đã xác nhận xét tuyển -> chỉ xem
+
+if ($ct && !$ct['daCapNhat'] && !$khoaNhap && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $csrf = (string)($_POST['csrf'] ?? '');
+    $nhap = is_array($_POST['diem'] ?? null) ? $_POST['diem'] : [];
+
+    if (!hash_equals($_SESSION['csrf_phuckhao'], $csrf)) {
+        $thongBao = 'Phiên làm việc không hợp lệ. Vui lòng tải lại trang.';
+    } else {
+        $hanhDong = (string)($_POST['hanhDong'] ?? '');
+
+        if ($hanhDong === 'kiemTra') {
+            // Bước 7-10
+            $diemDaGo = $nhap;
+            $kt = $ctrl->kiemTraDiem($maKy, $maPhieu, $nhap);
+            if ($kt['loi']) {
+                $loiDiem = $kt['loi'];
+                $thongBao = 'Điểm phúc khảo không hợp lệ, vui lòng kiểm tra lại.';
+            } elseif (!$kt['doiChieu']) {
+                $thongBao = 'Chưa nhập điểm phúc khảo cho môn nào.';
+            } else {
+                $doiChieu = $kt['doiChieu'];
+                $hienXacNhan = true;
+            }
+        } elseif ($hanhDong === 'luu') {
+            // Bước 11-16
+            $kq = $ctrl->luuDiem($maKy, $maPhieu, $nhap, isset($_SESSION['manguoidung']) ? (int)$_SESSION['manguoidung'] : null);
+            $popup = [
+                'thanhCong' => $kq['thanhCong'],
+                'tieuDe'    => $kq['thanhCong'] ? 'Lưu điểm phúc khảo thành công' : 'Không thể lưu điểm phúc khảo',
+                'noiDung'   => $kq['thongBao'],
+            ];
+            if ($kq['thanhCong']) {
+                // Tải lại để thấy điểm + trạng thái mới
+                $form = $ctrl->yeuCauForm();
+                $dsPhieu = $form['dsPhieu'];
+                $thongBao = $form['thongBao'];
+                $ct = $ctrl->chonPhieu($maKy, $maPhieu);
+            } else {
+                $diemDaGo = $nhap;
+            }
+        }
+    }
+}
 ?>
-<!DOCTYPE html><html lang="vi"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title><?php echo htmlspecialchars($pageTitle); ?></title>
-<script src="https://cdn.tailwindcss.com"></script><style>body{font-family:Arial,Helvetica,sans-serif}button:disabled{opacity:.45;cursor:not-allowed}.tag{border:1px solid #9ca3af;border-radius:4px;padding:2px 8px;font-size:12px}.hidden{display:none}</style></head><body class="bg-gray-100 text-gray-900">
-<header class="bg-white border-b border-gray-300"><div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between"><div class="flex items-center gap-3"><div class="w-9 h-9 border border-gray-400 flex items-center justify-center text-xs font-bold">LOGO</div><strong class="text-lg">Stackers</strong><span class="text-gray-400">|</span><span class="text-sm text-gray-600">Hệ thống Quản lý Tuyển sinh 10</span></div><div class="flex items-center gap-3 text-sm text-gray-600">Sở GD&amp;ĐT <span class="rounded-full border p-2">SGD</span></div></div></header>
-<div class="max-w-7xl mx-auto md:flex"><aside class="w-64 shrink-0 min-h-screen bg-white border-r border-gray-300 p-4 hidden md:block">
-      <nav class="space-y-1 text-sm">
-        <div class="px-3 py-2 text-gray-500">TỔNG QUAN</div>
-        <a href="#" class="block px-3 py-2 rounded border border-transparent hover:border-gray-300">Trang chủ</a>
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Stackers - Nhập điểm phúc khảo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 text-slate-800">
 
-        <div class="px-3 py-2 text-gray-500 mt-3">HỘI ĐỒNG &amp; ĐỊA ĐIỂM THI</div>
-        <a href="#" class="block px-3 py-2 rounded border border-transparent hover:border-gray-300">Quản lý các hội đồng thi</a>
-        <a href="#" class="block px-3 py-2 rounded border border-transparent hover:border-gray-300">Quản lý địa điểm thi/chấm thi</a>
-        <a href="#" class="block px-3 py-2 rounded border border-transparent hover:border-gray-300">Quản lý bài thi</a>
+<?php renderHeader(); renderSidebar(); ?>
 
-        <div class="px-3 py-2 text-gray-500 mt-3">ĐIỂM SỐ</div>
-        <a href="#" class="block px-3 py-2 rounded border border-transparent hover:border-gray-300">
-          Thiết lập công thức tính điểm
-        </a>
-        <a href="#" class="block px-3 py-2 rounded border border-transparent hover:border-gray-300">Thiết lập tiêu chuẩn ưu tiên/khuyến khích</a>
-        <span class="block px-3 py-2 rounded border border-transparent text-gray-700 hover:border-gray-300 cursor-pointer">Nhập điểm thi</span>
-        <span class="block px-3 py-2 rounded border border-gray-400 bg-gray-100 font-medium cursor-pointer">Nhập điểm phúc khảo</span>
+<main class="pl-72 pt-20">
+<div class="mx-auto max-w-7xl px-6 py-8 space-y-6">
 
-        <div class="px-3 py-2 text-gray-500 mt-3">TUYỂN SINH</div>
-        <span class="block px-3 py-2 rounded border border-transparent text-gray-700 hover:border-gray-300 cursor-pointer">Xét tuyển</span>
-        <span class="block px-3 py-2 rounded border border-transparent text-gray-700 hover:border-gray-300 cursor-pointer">Công bố điểm chuẩn</span>
+    <!-- TIÊU ĐỀ -->
+    <div>
+        <p class="mb-2 text-sm text-slate-500">Sở GD&amp;ĐT / Quản lý điểm / Nhập điểm phúc khảo</p>
+        <h1 class="text-2xl font-bold">Nhập điểm phúc khảo</h1>
+        <p class="mt-1 text-sm text-slate-500">Cập nhật điểm thi của thí sinh theo kết quả chấm phúc khảo.</p>
+    </div>
 
-        <div class="px-3 py-2 text-gray-500 mt-3">DANH SÁCH &amp; BÁO CÁO</div>
-        <a href="#" class="block px-3 py-2 rounded border border-transparent hover:border-gray-300">Xem danh sách thí sinh</a>
-        <a href="#" class="block px-3 py-2 rounded border border-transparent hover:border-gray-300">Thống kê, báo cáo</a>
+    <?php if ($thongBao): ?>
+        <div class="rounded-xl whitespace-pre-line border border-amber-300 bg-amber-50 px-5 py-4 text-sm text-amber-900">
+            <?= hPK($thongBao) ?>
+        </div>
+    <?php endif; ?>
 
-        <div class="px-3 py-2 text-gray-500 mt-3">HỆ THỐNG</div>
-        <a href="#" class="block px-3 py-2 rounded border border-transparent hover:border-gray-300">Quản lý tài khoản</a>
-      </nav>
-    </aside>
-<main class="flex-1 min-w-0 p-6"><div class="text-sm text-gray-500 mb-2">Sở GD&amp;ĐT &nbsp;/&nbsp; Điểm số &amp; Tuyển sinh &nbsp;/&nbsp; <span class="text-gray-800">Nhập điểm phúc khảo</span></div><div class="flex flex-wrap justify-between items-start gap-3 mb-6"><div><h1 class="text-xl font-semibold">Nhập điểm phúc khảo</h1><p class="text-sm text-gray-500 mt-1">Đối chiếu điểm thi ban đầu với kết quả chấm phúc khảo và cập nhật.</p></div><span class="text-xs border border-gray-400 px-2 py-1 rounded">Kỳ tuyển sinh: 2026 - 2027</span></div>
-<div id="message" class="hidden mb-4 border border-gray-500 bg-white p-4 text-sm rounded" role="status"></div><section class="bg-white border border-gray-300 rounded mb-5"><div class="px-5 py-3 border-b border-gray-300 font-semibold">Kỳ tuyển sinh 2026 - 2027</div><div class="p-5"><div class="grid md:grid-cols-1 gap-4"><input type="hidden" id="ky" value="2026"><label class="block text-sm"><span class="block text-gray-600 mb-1">Hồ sơ đã hoàn tất chấm phúc khảo</span><select id="hoSo" class="w-full border border-gray-400 rounded p-2 bg-white"><option value="PK001">PK001 - Nguyễn Minh Anh - Toán</option><option value="PK002">PK002 - Trần Gia Bảo - Ngữ văn</option></select></label></div><div class="mt-4"><button type="button" onclick="xemHoSo()" class="border border-gray-500 px-4 py-2 rounded text-sm bg-gray-800 text-white">Xem hồ sơ phúc khảo</button></div></div></section><section class="bg-white border border-gray-300 rounded mb-5"><div class="px-5 py-3 border-b border-gray-300 font-semibold">Thông tin kết quả chấm phúc khảo</div><div class="p-5"><div id="thongTin" class="text-sm text-gray-500">Chọn hồ sơ để xem kết quả chấm phúc khảo.</div></div></section><section class="bg-white border border-gray-300 rounded mb-5"><div class="px-5 py-3 border-b border-gray-300 font-semibold">Kiểm tra và xác nhận điểm phúc khảo</div><div class="p-5"><div class="flex flex-wrap gap-2"><button type="button" onclick="kiemTraPK()" class="border border-gray-500 px-4 py-2 rounded text-sm bg-gray-800 text-white">Kiểm tra điểm phúc khảo</button><button type="button" onclick="luuPK()" class="border border-gray-500 px-4 py-2 rounded text-sm bg-gray-800 text-white">Xác nhận lưu kết quả</button><button type="button" onclick="huyPK()" class="border border-gray-500 px-4 py-2 rounded text-sm bg-white">Hủy</button></div><p id="nhatKy" class="text-sm text-gray-600 mt-4">Chưa cập nhật điểm phúc khảo.</p></div><div class="px-5 py-3 border-t border-gray-200 text-xs text-gray-500">Bảo lưu điểm thi ban đầu để đối chiếu; chỉ cập nhật kết quả sau khi xác nhận.</div></section>
-<p class="mt-5 text-xs text-gray-500">Lưu ý: Đây là wireframe tương tác sử dụng dữ liệu giả lập, không phải kết quả tuyển sinh/điểm thi chính thức. Dữ liệu chỉ được lưu trong phiên trang hiện tại.</p></main></div>
-<script>
-const $=id=>document.getElementById(id);
-function msg(message,isError=false){const e=$('message');e.textContent=message;e.classList.remove('hidden');e.style.borderColor=isError?'#991b1b':'#6b7280';e.scrollIntoView({behavior:'smooth',block:'nearest'});}
-function val(id){return $(id).value;}
-function clean(s){return String(s??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;');}
-const dossiers={PK001:{ma:'TS001',ten:'Nguyễn Minh Anh',mon:'Toán',old:7.5,recheck:8.0,done:true},PK002:{ma:'TS002',ten:'Trần Gia Bảo',mon:'Ngữ văn',old:6.75,recheck:6.75,done:true}};const saved={};let loadedPK=null,checkedPK=false;
-function xemHoSo(){let key=val('hoSo'),d=dossiers[key];if(!d||!d.done)return msg('Hồ sơ phúc khảo chưa có kết quả chấm.',true);loadedPK=key;checkedPK=false;$('thongTin').innerHTML=`<div class="grid md:grid-cols-2 gap-4"><p><b>Mã hồ sơ:</b> ${key}</p><p><b>Thí sinh:</b> ${d.ma} - ${d.ten}</p><p><b>Môn thi:</b> ${d.mon}</p><p><b>Trạng thái hồ sơ:</b> ${saved[key]?'Đã cập nhật kết quả':'Đã hoàn tất chấm'}</p><p><b>Điểm thi ban đầu:</b> ${d.old}</p><p><b>Điểm theo kết quả chấm phúc khảo:</b> ${d.recheck}</p></div><label class="block text-sm mt-4">Nhập điểm phúc khảo đối chiếu với kết quả chấm<input type="number" min="0" max="10" step="0.25" class="block mt-2 border border-gray-400 rounded p-2 w-44" id="newScore" value="${saved[key]??d.recheck}" oninput="checkedPK=false"></label>`;msg('Đã tải hồ sơ phúc khảo hợp lệ '+key+'.');}
-function kiemTraPK(){if(!loadedPK)return msg('Vui lòng chọn hồ sơ phúc khảo trước.',true);const d=dossiers[loadedPK],i=$('newScore');if(!i||!i.value.trim()||!Number.isFinite(+i.value)||+i.value<0||+i.value>10)return msg('Điểm phúc khảo không hợp lệ. Vui lòng nhập từ 0 đến 10.',true);if(+i.value!==d.recheck)return msg('Điểm nhập không khớp với kết quả chấm phúc khảo chính thức ('+d.recheck+').',true);checkedPK=true;msg('Đã đối chiếu hợp lệ: điểm ban đầu '+d.old+', điểm phúc khảo '+i.value+'. Vui lòng xác nhận lưu.');}
-function luuPK(){if(!loadedPK||!checkedPK)return msg('Vui lòng kiểm tra và đối chiếu điểm phúc khảo trước.',true);if(!confirm('Xác nhận cập nhật điểm phúc khảo theo kết quả chấm?'))return;saved[loadedPK]=+$('newScore').value;const d=dossiers[loadedPK];$('nhatKy').textContent='Hồ sơ '+loadedPK+' • Điểm gốc '+d.old+' → Điểm cập nhật '+saved[loadedPK]+' • Người thực hiện: Sở GD&ĐT • '+new Date().toLocaleString('vi-VN');xemHoSo();msg('Nhập điểm phúc khảo thành công. Hồ sơ chuyển trạng thái “Đã cập nhật kết quả” (mô phỏng).');}
-function huyPK(){if(loadedPK)xemHoSo();checkedPK=false;msg('Đã hủy thao tác chưa xác nhận; điểm thi ban đầu không bị thay đổi.');}
-</script></body></html> 
+    <?php if ($ky): ?>
+    <!-- KỲ THI (CỐ ĐỊNH 2026) -->
+    <section class="rounded-2xl border border-slate-200 bg-white shadow-sm p-5">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <label class="text-sm">
+                Kỳ tuyển sinh
+                <input type="text" value="<?= hPK($ky['namtuyensinh']) ?>" readonly
+                       class="mt-1 block w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-slate-700 cursor-default">
+            </label>
+        </div>
+    </section>
+
+    <!-- BƯỚC 4: DANH SÁCH HỒ SƠ PHÚC KHẢO -->
+    <section class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <div class="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+            <h2 class="font-semibold">Hồ sơ phúc khảo</h2>
+            <span class="text-xs text-slate-500"><?= count($dsPhieu) ?> phiếu</span>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm text-left">
+                <thead class="bg-slate-50 text-slate-600">
+                    <tr>
+                        <th class="p-3">Mã phiếu</th>
+                        <th class="p-3">SBD</th>
+                        <th class="p-3">Họ tên</th>
+                        <th class="p-3">Ngày gửi</th>
+                        <th class="p-3">Lý do</th>
+                        <th class="p-3">Trạng thái</th>
+                        <th class="p-3"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php foreach ($dsPhieu as $p): ?>
+                    <?php [$nhan, $mau] = trangThaiPK((string)$p['trangthai']); ?>
+                    <tr class="border-t border-slate-100 <?= (int)$p['maphieu'] === $maPhieu ? 'bg-blue-50' : 'hover:bg-slate-50' ?>">
+                        <td class="p-3 font-medium">#<?= (int)$p['maphieu'] ?></td>
+                        <td class="p-3"><?= hPK($p['sobaodanh'] ?? '—') ?></td>
+                        <td class="p-3 font-medium"><?= hPK(trim(($p['ho'] ?? '') . ' ' . ($p['ten'] ?? ''))) ?></td>
+                        <td class="p-3"><?= hPK(date('d/m/Y H:i', strtotime($p['ngaytao']))) ?></td>
+                        <td class="p-3 max-w-xs truncate" title="<?= hPK($p['lydo']) ?>"><?= hPK($p['lydo']) ?></td>
+                        <td class="p-3"><span class="rounded-full px-3 py-1 text-xs <?= $mau ?>"><?= hPK($nhan) ?></span></td>
+                        <td class="p-3 text-right">
+                            <a href="?phieu=<?= (int)$p['maphieu'] ?>"
+                               class="rounded-lg border border-blue-200 px-3 py-1.5 text-blue-700 hover:bg-blue-50">
+                                <?= in_array($p['trangthai'], ['HOAN_THANH', 'TU_CHOI'], true) ? 'Xem' : 'Nhập điểm' ?>
+                            </a>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                <?php if (!$dsPhieu): ?>
+                    <tr><td colspan="7" class="p-8 text-center text-slate-500">Không có hồ sơ phúc khảo đủ điều kiện để nhập điểm.</td></tr>
+                <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </section>
+    <?php endif; ?>
+
+    <?php if ($ct): ?>
+    <?php $phieu = $ct['phieu']; ?>
+    <!-- BƯỚC 6-7: CHI TIẾT HỒ SƠ + NHẬP ĐIỂM -->
+    <section class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <div class="border-b border-slate-200 px-5 py-3">
+            <h2 class="font-semibold">Phiếu #<?= (int)$phieu['maphieu'] ?> –
+                <?= hPK(trim(($phieu['ho'] ?? '') . ' ' . ($phieu['ten'] ?? ''))) ?>
+                (SBD <?= hPK($phieu['sobaodanh'] ?? '—') ?>)</h2>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 px-5 py-4 text-sm">
+            <p><b>Lý do phúc khảo:</b> <?= hPK($phieu['lydo']) ?></p>
+            <p><b>Minh chứng:</b> <?= $phieu['tenfilegoc'] ? hPK($phieu['tenfilegoc']) : '<span class="text-slate-400">Không có</span>' ?></p>
+            <p><b>Ngày gửi:</b> <?= hPK(date('d/m/Y H:i', strtotime($phieu['ngaytao']))) ?></p>
+            <p><b>Trạng thái:</b> <?= hPK(trangThaiPK((string)$phieu['trangthai'])[0]) ?></p>
+        </div>
+
+        <form method="post" action="?phieu=<?= (int)$maPhieu ?>">
+            <input type="hidden" name="csrf" value="<?= hPK($_SESSION['csrf_phuckhao']) ?>">
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm text-left">
+                    <thead class="bg-slate-50 text-slate-600">
+                        <tr>
+                            <th class="p-3">Môn thi</th>
+                            <th class="p-3">Số phách</th>
+                            <th class="p-3">Điểm ban đầu</th>
+                            <th class="p-3">Điểm phúc khảo đã lưu</th>
+                            <th class="p-3 w-52">Nhập điểm phúc khảo</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    <?php foreach ($ct['baiThi'] as $bt): ?>
+                        <?php
+                        $ma = (int)$bt['mabaithi'];
+                        $giaTri = array_key_exists($ma, $diemDaGo)
+                            ? (string)$diemDaGo[$ma]
+                            : ($bt['diemsauphuckhao'] === null ? '' : number_format((float)$bt['diemsauphuckhao'], 2, '.', ''));
+                        ?>
+                        <tr class="border-t border-slate-100 <?= isset($loiDiem[$ma]) ? 'bg-red-50' : '' ?>">
+                            <td class="p-3 font-medium"><?= hPK($bt['tenmonhoc']) ?></td>
+                            <td class="p-3 text-slate-600"><?= hPK($bt['sophach'] ?? '—') ?></td>
+                            <td class="p-3"><?= diemPK($bt['diem']) ?></td>
+                            <td class="p-3"><?= diemPK($bt['diemsauphuckhao']) ?></td>
+                            <td class="p-3">
+                                <?php if ((int)$bt['vang'] === 1): ?>
+                                    <span class="text-slate-500">Vắng thi</span>
+                                <?php elseif ($ct['daCapNhat']): ?>
+                                    <span class="text-slate-400">Đã cập nhật</span>
+                                <?php elseif ($khoaNhap): ?>
+                                    <span class="text-slate-400">Đã khóa</span>
+                                <?php else: ?>
+                                    <input type="text" inputmode="decimal" name="diem[<?= $ma ?>]"
+                                           value="<?= hPK($giaTri) ?>" placeholder="Để trống nếu không phúc khảo"
+                                           class="w-48 rounded-lg border px-3 py-1.5 <?= isset($loiDiem[$ma]) ? 'border-red-500' : 'border-slate-300' ?>">
+                                    <?php if (isset($loiDiem[$ma])): ?>
+                                        <p class="mt-1 text-xs text-red-600"><?= hPK($loiDiem[$ma]) ?></p>
+                                    <?php endif; ?>
+                                <?php endif; ?>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                    <?php if (!$ct['baiThi']): ?>
+                        <tr><td colspan="5" class="p-8 text-center text-slate-500">Thí sinh chưa có bài thi nào để nhập điểm phúc khảo.</td></tr>
+                    <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+
+            <?php if ($ct['baiThi'] && !$ct['daCapNhat'] && !$khoaNhap): ?>
+            <div class="flex justify-end gap-3 border-t border-slate-200 px-5 py-4">
+                <a href="?" class="rounded-lg border border-slate-300 px-5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">Đóng</a>
+                <button type="submit" name="hanhDong" value="kiemTra"
+                        class="rounded-lg bg-blue-700 px-6 py-2.5 text-sm font-semibold text-white hover:bg-blue-800">Lưu</button>
+            </div>
+            <?php endif; ?>
+        </form>
+    </section>
+    <?php endif; ?>
+
+</div>
+</main>
+
+<!-- BƯỚC 10-11: POPUP ĐỐI CHIẾU ĐIỂM BAN ĐẦU / ĐIỂM PHÚC KHẢO -->
+<?php if ($hienXacNhan && $ct): ?>
+<div id="popupXacNhanPK" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40" role="dialog" aria-modal="true">
+    <div class="mx-4 w-full max-w-xl rounded-2xl bg-white p-6 shadow-xl">
+        <h3 class="mb-1 text-lg font-bold">Xác nhận kết quả phúc khảo</h3>
+        <p class="mb-4 text-sm text-slate-600">
+            Phiếu #<?= (int)$maPhieu ?> – <?= hPK(trim(($ct['phieu']['ho'] ?? '') . ' ' . ($ct['phieu']['ten'] ?? ''))) ?>.
+            Điểm thi của thí sinh sẽ được cập nhật theo điểm phúc khảo.
+        </p>
+        <table class="w-full rounded-lg border border-slate-200 text-sm text-left">
+            <thead class="bg-slate-50">
+                <tr><th class="p-2">Môn</th><th class="p-2">Điểm ban đầu</th><th class="p-2">Điểm phúc khảo</th><th class="p-2"></th></tr>
+            </thead>
+            <tbody>
+            <?php foreach ($doiChieu as $d): ?>
+                <tr class="border-t border-slate-100">
+                    <td class="p-2"><?= hPK($d['tenmonhoc']) ?></td>
+                    <td class="p-2 text-slate-500"><?= diemPK($d['diemcu']) ?></td>
+                    <td class="p-2 font-semibold text-blue-700"><?= diemPK($d['diemmoi']) ?></td>
+                    <td class="p-2">
+                        <?php if ($d['khac']): ?>
+                            <span class="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700">Thay đổi</span>
+                        <?php else: ?>
+                            <span class="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">Giữ nguyên</span>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+
+        <form method="post" action="?phieu=<?= (int)$maPhieu ?>" class="mt-5 flex gap-3">
+            <input type="hidden" name="csrf" value="<?= hPK($_SESSION['csrf_phuckhao']) ?>">
+            <?php foreach ($doiChieu as $d): ?>
+                <input type="hidden" name="diem[<?= (int)$d['mabaithi'] ?>]" value="<?= hPK($d['diemmoi']) ?>">
+            <?php endforeach; ?>
+            <!-- 11.1: Hủy -> không lưu, điểm ban đầu giữ nguyên -->
+            <button type="button" onclick="document.getElementById('popupXacNhanPK').remove()"
+                    class="flex-1 rounded-lg border border-slate-300 px-5 py-2.5 font-semibold text-slate-700 hover:bg-slate-50">Hủy</button>
+            <button type="submit" name="hanhDong" value="luu"
+                    class="flex-1 rounded-lg bg-blue-700 px-5 py-2.5 font-semibold text-white hover:bg-blue-800">Xác nhận</button>
+        </form>
+    </div>
+</div>
+<?php endif; ?>
+
+<!-- POPUP KẾT QUẢ -->
+<?php if ($popup !== null): ?>
+<div id="popupKetQuaPK" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40" role="dialog" aria-modal="true">
+    <div class="mx-4 w-full max-w-md rounded-2xl bg-white p-6 text-center shadow-xl">
+        <div class="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full <?= $popup['thanhCong'] ? 'bg-green-100' : 'bg-red-100' ?>">
+            <span class="text-2xl <?= $popup['thanhCong'] ? 'text-green-600' : 'text-red-600' ?>"><?= $popup['thanhCong'] ? '✓' : '!' ?></span>
+        </div>
+        <h3 class="mb-2 text-lg font-bold text-slate-800"><?= hPK($popup['tieuDe']) ?></h3>
+        <p class="mb-5 text-sm text-slate-600"><?= hPK($popup['noiDung']) ?></p>
+        <button type="button" onclick="document.getElementById('popupKetQuaPK').remove()"
+                class="w-full rounded-lg bg-blue-700 px-5 py-2.5 font-semibold text-white hover:bg-blue-800">Đóng</button>
+    </div>
+</div>
+<?php endif; ?>
+
+</body>
+</html>

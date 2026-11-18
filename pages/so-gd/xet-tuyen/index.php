@@ -214,6 +214,15 @@ try {
                                 error_log('[XetTuyen:KiemTraDaXacNhan] ' . $kiemTraLoi->getMessage());
                             }
                         }
+
+                        // Xác nhận xong -> tải lại hồ sơ từ DB để cột "Trạng thái"
+                        // hiện ngay kết quả mới, không cần F5.
+                        if (!empty($kq['thanhCong'])) {
+                            $dlMoi = $ctrl->taiDuLieu($maKy);
+                            if (!empty($dlMoi['thanhCong'])) {
+                                $dl = $dlMoi;
+                            }
+                        }
                     }
 
                     $popupPhanHoi = [
