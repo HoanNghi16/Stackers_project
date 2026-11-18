@@ -1,5 +1,14 @@
 <?php
-// Quản lý địa điểm thi (Sở GD&ĐT) - 1 FILE DUY NHẤT
+/**
+ * QUẢN LÝ ĐỊA ĐIỂM THI - STACKERS
+ * Một file PHP duy nhất.
+ *
+ * - Giữ giao diện Khung 1 và Khung 2.
+ * - Điểm thi: chỉ chọn trường THPT có phòng.
+ * - Trường dự thi: chỉ chọn THCS, tối đa 2 trường / điểm thi.
+ * - Xếp phòng và cấp SBD cho học sinh thuộc các trường THCS đã chọn.
+ * - Không xóa dữ liệu học sinh, bài thi, điểm thi hoặc bản ghi xếp phòng cũ.
+ */
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -14,6 +23,7 @@ const DB_PASS = 'asdlfjlasdjfld';
 
 const REQUIRE_SO_GD = false;
 const DEFAULT_ROOM_CAPACITY = 24;
+const MAX_SCHOOLS_PER_VENUE = 2;   // Giới hạn đúng 2 trường THCS dự thi tại 1 điểm thi
 const HOME_URL = '';
 
 /* ===================== KẾT NỐI DB ===================== */
@@ -33,396 +43,610 @@ try {
     exit('Không kết nối được database: ' . htmlspecialchars($e->getMessage()));
 }
 
-/* ===================== PHÂN QUYỀN ===================== */
-function sessionHasRole($data, string $role): bool
+/* ===================== HÀM CHUNG ===================== */
+function jsonResponse(array $data, int $status = 200): void
 {
-    if (is_array($data)) {
-        foreach ($data as $v) {
-            if (sessionHasRole($v, $role)) return true;
+    http_response_code($status);
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store');
+    echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+    exit;
+}
+
+function failResult(string $code, string $message, string $detail = ''): array
+{
+    return [
+        'ok' => false,
+        'code' => $code,
+        'message' => $message,
+        'detail' => $detail,
+    ];
+}
+
+function hasRole($value, string $role): bool
+{
+    if (is_array($value)) {
+        foreach ($value as $item) {
+            if (hasRole($item, $role)) {
+                return true;
+            }
         }
         return false;
     }
-    return is_string($data) && $data === $role;
+    return is_string($value) && strtoupper($value) === strtoupper($role);
 }
 
-$isSoGD = !REQUIRE_SO_GD || sessionHasRole($_SESSION ?? [], 'SO_GD');
+$isSoGD = !REQUIRE_SO_GD || hasRole($_SESSION ?? [], 'SO_GD');
 
-/* ===================== TỰ TẠO CỘT / BẢNG CÒN THIẾU ===================== */
+function tableExists(PDO $pdo, string $table): bool
+{
+    $st = $pdo->prepare('SHOW TABLES LIKE ?');
+    $st->execute([$table]);
+    return (bool)$st->fetchColumn();
+}
+
+function columnExists(PDO $pdo, string $table, string $column): bool
+{
+    $st = $pdo->prepare("SHOW COLUMNS FROM `$table` LIKE ?");
+    $st->execute([$column]);
+    return (bool)$st->fetch();
+}
+
+/**
+ * Chỉ bổ sung cấu trúc còn thiếu; không xóa/sửa dữ liệu hiện có.
+ * Bảng truongduthi theo đúng cấu trúc đang dùng trong database gốc.
+ */
 function ensureSchema(PDO $pdo): void
 {
-    $col = $pdo->query("SHOW COLUMNS FROM phong LIKE 'succhua'")->fetch();
-    if (!$col) {
-        $pdo->exec("ALTER TABLE phong ADD COLUMN succhua INT NOT NULL DEFAULT " . (int)DEFAULT_ROOM_CAPACITY);
+    $requiredTables = [
+        'truonghoc', 'phong', 'phuong', 'hocsinh',
+        'hosonguoidung', 'kythituyensinh', 'baithi', 'xepphongthi'
+    ];
+
+    foreach ($requiredTables as $table) {
+        if (!tableExists($pdo, $table)) {
+            throw new RuntimeException("Database thiếu bảng `$table`.");
+        }
     }
 
-    $base = "CREATE TABLE IF NOT EXISTS truongduthi (
-            makythi bigint(20) NOT NULL,
-            madiadiemthi bigint(20) NOT NULL,
-            matruongthcs bigint(20) NOT NULL,
-            PRIMARY KEY (makythi, matruongthcs)";
-    $tail = ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
-    try {
-        $pdo->exec($base . ",
-            CONSTRAINT fk_tdt_kythi FOREIGN KEY (makythi) REFERENCES kythituyensinh(makythi),
-            CONSTRAINT fk_tdt_diemthi FOREIGN KEY (madiadiemthi) REFERENCES truonghoc(matruong),
-            CONSTRAINT fk_tdt_thcs FOREIGN KEY (matruongthcs) REFERENCES truonghoc(matruong)" . $tail);
-    } catch (PDOException $e) {
-        $pdo->exec($base . $tail); // không tạo được khóa ngoại thì tạo bảng không có
+    if (!columnExists($pdo, 'phong', 'succhua')) {
+        $pdo->exec(
+            'ALTER TABLE `phong` ADD COLUMN `succhua` INT NOT NULL DEFAULT ' .
+            (int)DEFAULT_ROOM_CAPACITY
+        );
+    }
+
+    if (!tableExists($pdo, 'truongduthi')) {
+        $pdo->exec("
+            CREATE TABLE `truongduthi` (
+                `makythi` BIGINT(20) NOT NULL,
+                `madiadiemthi` BIGINT(20) NOT NULL,
+                `matruongthcs` BIGINT(20) NOT NULL
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        ");
+    }
+
+    foreach (['maxepphong', 'mahocsinh', 'maphong'] as $column) {
+        if (!columnExists($pdo, 'xepphongthi', $column)) {
+            throw new RuntimeException("Bảng xepphongthi thiếu cột `$column`.");
+        }
     }
 }
 
 try {
     ensureSchema($pdo);
-} catch (PDOException $e) {
+} catch (Throwable $e) {
     http_response_code(500);
-    exit('Không tự tạo được bảng/cột cần thiết (kiểm tra quyền của user database): ' . htmlspecialchars($e->getMessage()));
+    exit('Lỗi kiểm tra cấu trúc database: ' . htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8'));
 }
 
-/* ===================== HÀM TIỆN ÍCH ===================== */
-function fail(string $code, string $message, string $detail = ''): array
-{
-    return ['ok' => false, 'code' => $code, 'message' => $message, 'detail' => $detail];
+/* ===================== KỲ THI ĐANG QUẢN LÝ ===================== */
+$kythi = $pdo->query(
+    'SELECT makythi, namtuyensinh FROM kythituyensinh ORDER BY namtuyensinh DESC LIMIT 1'
+)->fetch();
+
+if (!$kythi) {
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        jsonResponse(failResult('NO_EXAM', 'Chưa có kỳ thi tuyển sinh nào.'), 400);
+    }
+    exit('Chưa có kỳ thi tuyển sinh nào.');
 }
+$examId = (int)$kythi['makythi'];
 
-// Khóa sắp xếp theo bảng chữ cái + dấu thanh tiếng Việt (a ă â b c d đ e ê ...)
-function viSortKey(string $s): string
+/* ===================== THUẬT TOÁN PHÂN BỔ ===================== */
+function sortVietnamese(array &$students): void
 {
-    static $order = null, $tones = null;
-    if ($order === null) {
-        $bases = ['a','ă','â','b','c','d','đ','e','ê','f','g','h','i','j','k','l','m','n','o','ô','ơ','p','q','r','s','t','u','ư','v','w','x','y','z'];
-        $order = [];
-        foreach ($bases as $i => $b) $order[$b] = chr(65 + $i);
-
-        // thứ tự thanh: không dấu < huyền < sắc < hỏi < ngã < nặng
-        $groups = [
-            'a' => ['à','á','ả','ã','ạ'], 'ă' => ['ằ','ắ','ẳ','ẵ','ặ'], 'â' => ['ầ','ấ','ẩ','ẫ','ậ'],
-            'e' => ['è','é','ẻ','ẽ','ẹ'], 'ê' => ['ề','ế','ể','ễ','ệ'], 'i' => ['ì','í','ỉ','ĩ','ị'],
-            'o' => ['ò','ó','ỏ','õ','ọ'], 'ô' => ['ồ','ố','ổ','ỗ','ộ'], 'ơ' => ['ờ','ớ','ở','ỡ','ợ'],
-            'u' => ['ù','ú','ủ','ũ','ụ'], 'ư' => ['ừ','ứ','ử','ữ','ự'], 'y' => ['ỳ','ý','ỷ','ỹ','ỵ'],
-        ];
-        $tones = [];
-        foreach ($groups as $base => $list) {
-            foreach ($list as $t => $ch) $tones[$ch] = [$base, $t + 1];
-        }
+    if (class_exists('Collator')) {
+        $collator = new Collator('vi_VN');
+        usort($students, static function ($a, $b) use ($collator) {
+            $cmp = $collator->compare((string)$a['ten'], (string)$b['ten']);
+            if ($cmp !== 0) return $cmp;
+            $cmp = $collator->compare((string)$a['ho'], (string)$b['ho']);
+            if ($cmp !== 0) return $cmp;
+            return (int)$a['mahocsinh'] <=> (int)$b['mahocsinh'];
+        });
+        return;
     }
 
-    $s = mb_strtolower(trim($s), 'UTF-8');
-    if (class_exists('Normalizer')) {
-        $s = Normalizer::normalize($s, Normalizer::FORM_C) ?: $s;
-    }
-    $primary = '';
-    $toneKey = '';
-    foreach (mb_str_split($s, 1, 'UTF-8') as $ch) {
-        if (isset($tones[$ch])) {
-            $primary .= $order[$tones[$ch][0]];
-            $toneKey .= $tones[$ch][1];
-        } elseif (isset($order[$ch])) {
-            $primary .= $order[$ch];
-            $toneKey .= '0';
-        } elseif ($ch === ' ') {
-            $primary .= ' ';
-            $toneKey .= '0';
-        }
-    }
-    return $primary . "\x01" . $toneKey;
-}
-
-/* ===================== NGHIỆP VỤ: SINH PHÒNG & PHÂN BỔ ===================== */
-function computeAllocation(PDO $pdo, array $kythi, $venueId, $thcsIds): array
-{
-    $venueId = filter_var($venueId, FILTER_VALIDATE_INT);
-    $thcsIds = array_values(array_unique(array_map('intval', is_array($thcsIds) ? $thcsIds : [])));
-
-    // Kiểm tra điều kiện đầu vào: đúng 1 điểm thi và 2 trường dự thi
-    if (!$venueId || count($thcsIds) !== 2) {
-        return fail('INVALID', 'Vui lòng chọn đúng 1 điểm thi (THPT) và 2 trường THCS dự thi.');
-    }
-
-    $st = $pdo->prepare("SELECT matruong, tentruong FROM truonghoc WHERE matruong = ? AND UPPER(TRIM(loaitruong)) = 'THPT'");
-    $st->execute([$venueId]);
-    $venue = $st->fetch();
-    if (!$venue) return fail('INVALID', 'Điểm thi không hợp lệ (phải là trường THPT).');
-
-    $st = $pdo->prepare(
-        "SELECT matruong, tentruong FROM truonghoc
-         WHERE UPPER(TRIM(loaitruong)) = 'THCS' AND matruong IN (?, ?)"
-    );
-    $st->execute($thcsIds);
-    $schools = $st->fetchAll();
-    if (count($schools) !== 2) return fail('INVALID', 'Trường dự thi không hợp lệ (phải là 2 trường THCS khác nhau).');
-
-    // Lấy toàn bộ học sinh của 2 trường dự thi
-    $kid = (int)$kythi['makythi'];
-    $st = $pdo->prepare(
-        "SELECT h.mahocsinh, h.matruongdanghoc, COALESCE(u.ho, '') AS ho, COALESCE(u.ten, '') AS ten
-         FROM hocsinh h
-         LEFT JOIN hosonguoidung u ON u.manguoidung = h.manguoidung
-         WHERE h.makythi = ? AND h.matruongdanghoc IN (?, ?)"
-    );
-    $st->execute(array_merge([$kid], $thcsIds));
-    $students = $st->fetchAll();
-
-    // 4.1: không có học sinh
-    if (count($students) === 0) {
-        return fail('EMPTY_STUDENTS', 'Danh sách học sinh của trường dự thi trống. Vui lòng kiểm tra lại dữ liệu thí sinh!');
-    }
-
-    // Sắp xếp A-Z theo tên, rồi họ
-    foreach ($students as &$s) {
-        $s['k_ten'] = viSortKey($s['ten']);
-        $s['k_ho']  = viSortKey($s['ho']);
-    }
-    unset($s);
-    usort($students, function ($a, $b) {
-        return strcmp($a['k_ten'], $b['k_ten'])
-            ?: strcmp($a['k_ho'], $b['k_ho'])
-            ?: ($a['mahocsinh'] <=> $b['mahocsinh']);
+    usort($students, static function ($a, $b) {
+        $cmp = strcasecmp((string)$a['ten'], (string)$b['ten']);
+        if ($cmp !== 0) return $cmp;
+        $cmp = strcasecmp((string)$a['ho'], (string)$b['ho']);
+        if ($cmp !== 0) return $cmp;
+        return (int)$a['mahocsinh'] <=> (int)$b['mahocsinh'];
     });
+}
 
-    // Phòng của điểm thi
-    $st = $pdo->prepare("SELECT maphong, tenphong, succhua FROM phong WHERE matruong = ? AND succhua > 0");
-    $st->execute([$venueId]);
-    $rooms = $st->fetchAll();
-    usort($rooms, function ($a, $b) { return strnatcasecmp($a['tenphong'], $b['tenphong']); });
+function computeAllocation(PDO $pdo, array $exam, int $venueId, array $schoolIds): array
+{
+    $schoolIds = array_values(array_unique(array_filter(
+        array_map('intval', $schoolIds),
+        static fn($id) => $id > 0
+    )));
+    $n = count($schoolIds);
 
-    $total = count($students);
-    $totalCap = 0;
-    foreach ($rooms as $r) $totalCap += (int)$r['succhua'];
-
-    // 4.2: không đủ sức chứa
-    if ($totalCap < $total) {
-        return fail(
-            'NO_CAPACITY',
-            'Điểm thi không đủ sức chứa cho tổng số thí sinh của 2 trường dự thi. Vui lòng chọn thêm phòng hoặc đổi điểm thi khác!',
-            "Tổng thí sinh: $total - Tổng sức chứa các phòng tại điểm thi: $totalCap (" . count($rooms) . " phòng)."
+    if ($venueId <= 0 || $n < 1 || $n > MAX_SCHOOLS_PER_VENUE) {
+        return failResult(
+            'INVALID',
+            'Mỗi điểm thi phải có từ 1 đến ' . MAX_SCHOOLS_PER_VENUE . ' trường THCS dự thi.'
         );
     }
 
-    $schoolName = [];
-    $schoolCount = [];
-    foreach ($schools as $sc) {
-        $schoolName[(int)$sc['matruong']] = $sc['tentruong'];
-        $schoolCount[(int)$sc['matruong']] = 0;
+    $st = $pdo->prepare("
+        SELECT matruong, tentruong, UPPER(TRIM(loaitruong)) AS loai
+        FROM truonghoc
+        WHERE matruong = ?
+        LIMIT 1
+    ");
+    $st->execute([$venueId]);
+    $venue = $st->fetch();
+
+    if (!$venue || $venue['loai'] !== 'THPT') {
+        return failResult('INVALID_VENUE', 'Điểm thi phải là một trường THPT hợp lệ.');
     }
 
-    $yy = substr((string)$kythi['namtuyensinh'], -2);
-    $out = [];
-    $i = 0;
-    $roomNo = 0;
-    foreach ($rooms as $room) {
-        if ($i >= $total) break;
-        $roomNo++;
-        $slice = array_slice($students, $i, (int)$room['succhua']);
-        $i += count($slice);
+    $marks = implode(',', array_fill(0, $n, '?'));
+    $st = $pdo->prepare("
+        SELECT matruong, tentruong
+        FROM truonghoc
+        WHERE matruong IN ($marks)
+          AND UPPER(TRIM(loaitruong)) = 'THCS'
+    ");
+    $st->execute($schoolIds);
+    $schools = $st->fetchAll();
 
-        $list = [];
-        $seq = 0;
-        foreach ($slice as $stu) {
-            $seq++;
-            $sid = (int)$stu['matruongdanghoc'];
-            $schoolCount[$sid]++;
-            $name = trim($stu['ho'] . ' ' . $stu['ten']);
-            $list[] = [
-                'id'     => (int)$stu['mahocsinh'],
-                'sbd'    => sprintf('%s%03d%02d%03d', $yy, $venueId, $roomNo, $seq),
-                'name'   => $name !== '' ? $name : '(chưa có hồ sơ)',
-                'school' => $schoolName[$sid] ?? '',
+    if (count($schools) !== $n) {
+        return failResult('INVALID_SCHOOL', 'Danh sách trường dự thi có trường không hợp lệ hoặc không phải THCS.');
+    }
+
+    $st = $pdo->prepare("
+        SELECT h.mahocsinh, h.matruongdanghoc,
+               COALESCE(u.ho, '') AS ho,
+               COALESCE(u.ten, '') AS ten,
+               COALESCE(h.sobaodanh, '') AS sobaodanh
+        FROM hocsinh h
+        LEFT JOIN hosonguoidung u ON u.manguoidung = h.manguoidung
+        WHERE h.makythi = ?
+          AND h.matruongdanghoc IN ($marks)
+        ORDER BY h.mahocsinh
+    ");
+    $st->execute(array_merge([(int)$exam['makythi']], $schoolIds));
+    $students = $st->fetchAll();
+
+    if (!$students) {
+        $schoolNames = implode(', ', array_column($schools, 'tentruong'));
+        return failResult(
+            'EMPTY_STUDENTS',
+            'Các trường dự thi đã chọn hiện chưa có học sinh đăng ký trong kỳ thi này.',
+            'Trường đã chọn: ' . $schoolNames . '. Hãy kiểm tra cột hocsinh.matruongdanghoc và hocsinh.makythi. Chương trình không tự chuyển học sinh từ trường khác sang.'
+        );
+    }
+
+    sortVietnamese($students);
+
+    $st = $pdo->prepare("
+        SELECT maphong, tenphong, succhua
+        FROM phong
+        WHERE matruong = ? AND succhua > 0
+        ORDER BY tenphong
+    ");
+    $st->execute([$venueId]);
+    $rooms = $st->fetchAll();
+
+    if (!$rooms) {
+        return failResult('NO_ROOMS', 'Điểm thi "' . $venue['tentruong'] . '" chưa có phòng thi có sức chứa hợp lệ.');
+    }
+
+    $total = count($students);
+    $capacity = array_sum(array_map(static fn($r) => (int)$r['succhua'], $rooms));
+
+    if ($capacity < $total) {
+        return failResult(
+            'NO_CAPACITY',
+            'Điểm thi "' . $venue['tentruong'] . '" không đủ sức chứa.',
+            "Số học sinh: $total. Tổng sức chứa: $capacity (" . count($rooms) . ' phòng).'
+        );
+    }
+
+    $schoolNames = [];
+    $schoolCounts = [];
+    foreach ($schools as $school) {
+        $id = (int)$school['matruong'];
+        $schoolNames[$id] = $school['tentruong'];
+        $schoolCounts[$id] = 0;
+    }
+
+    $year2 = substr((string)$exam['namtuyensinh'], -2);
+    $allocatedRooms = [];
+    $offset = 0;
+
+    foreach ($rooms as $roomIndex => $room) {
+        if ($offset >= $total) break;
+
+        $roomNo = $roomIndex + 1;
+        $chunk = array_slice($students, $offset, (int)$room['succhua']);
+        $offset += count($chunk);
+        $roomStudents = [];
+
+        foreach ($chunk as $index => $student) {
+            $studentSchool = (int)$student['matruongdanghoc'];
+            $schoolCounts[$studentSchool] = ($schoolCounts[$studentSchool] ?? 0) + 1;
+
+            // Cấu trúc SBD: YY + mã điểm thi (3 số) + số phòng (2 số) + STT (3 số).
+            $sbd = sprintf(
+                '%02d%03d%02d%03d',
+                (int)$year2,
+                $venueId % 1000,
+                $roomNo % 100,
+                $index + 1
+            );
+
+            $fullName = trim((string)$student['ho'] . ' ' . (string)$student['ten']);
+            $roomStudents[] = [
+                'id' => (int)$student['mahocsinh'],
+                'sbd' => $sbd,
+                'name' => $fullName !== '' ? $fullName : '(Chưa có hồ sơ)',
+                'school' => $schoolNames[$studentSchool] ?? 'Không xác định',
             ];
         }
-        $out[] = [
-            'id'       => (int)$room['maphong'],
-            'name'     => $room['tenphong'],
+
+        $allocatedRooms[] = [
+            'id' => (int)$room['maphong'],
+            'name' => $room['tenphong'],
             'capacity' => (int)$room['succhua'],
-            'students' => $list,
+            'students' => $roomStudents,
         ];
     }
 
-    $schoolsOut = [];
-    foreach ($schoolName as $id => $name) {
-        $schoolsOut[] = ['id' => $id, 'name' => $name, 'count' => $schoolCount[$id]];
+    $schoolSummary = [];
+    foreach ($schoolNames as $id => $name) {
+        $schoolSummary[] = [
+            'id' => $id,
+            'name' => $name,
+            'count' => $schoolCounts[$id] ?? 0,
+        ];
     }
 
     return [
-        'ok'        => true,
-        'venueId'   => $venueId,
+        'ok' => true,
+        'venueId' => $venueId,
         'venueName' => $venue['tentruong'],
-        'schools'   => $schoolsOut,
-        'total'     => $total,
-        'rooms'     => $out,
+        'schools' => $schoolSummary,
+        'total' => $total,
+        'rooms' => $allocatedRooms,
     ];
 }
 
-/* ===================== NGHIỆP VỤ: LƯU CẤU HÌNH ===================== */
-function saveConfig(PDO $pdo, array $kythi, array $in): array
+function computeAll(PDO $pdo, array $exam, array $groups): array
 {
-    $alloc = computeAllocation($pdo, $kythi, $in['venue'] ?? null, $in['thcs'] ?? []);
-    if (!$alloc['ok']) return $alloc;
+    if (!$groups) {
+        return failResult('INVALID', 'Chưa có điểm thi nào được cấu hình.');
+    }
 
-    $kid = (int)$kythi['makythi'];
-    $venueId = $alloc['venueId'];
+    $seenVenues = [];
+    $seenSchools = [];
+    $venues = [];
+    $totalStudents = 0;
+    $totalRooms = 0;
+
+    foreach ($groups as $group) {
+        $venueId = (int)($group['venue'] ?? 0);
+        $schoolIds = is_array($group['thcs'] ?? null) ? $group['thcs'] : [];
+
+        if (isset($seenVenues[$venueId])) {
+            return failResult('DUPLICATE_VENUE', 'Một điểm thi đang bị cấu hình trùng.');
+        }
+        $seenVenues[$venueId] = true;
+
+        foreach ($schoolIds as $schoolId) {
+            $schoolId = (int)$schoolId;
+            if (isset($seenSchools[$schoolId])) {
+                return failResult('DUPLICATE_SCHOOL', 'Một trường THCS không được xếp vào nhiều điểm thi.');
+            }
+            $seenSchools[$schoolId] = true;
+        }
+
+        $allocation = computeAllocation($pdo, $exam, $venueId, $schoolIds);
+        if (!$allocation['ok']) {
+            return $allocation;
+        }
+
+        $venues[] = $allocation;
+        $totalStudents += $allocation['total'];
+        $totalRooms += count($allocation['rooms']);
+    }
+
+    return [
+        'ok' => true,
+        'venues' => $venues,
+        'total' => $totalStudents,
+        'roomCount' => $totalRooms,
+    ];
+}
+
+/* ===================== LƯU DỮ LIỆU AN TOÀN ===================== */
+/**
+ * Không DELETE bất kỳ bản ghi nào.
+ * - Không sửa/xóa bài thi và điểm.
+ * - Nếu học sinh đã có điểm, không cho đổi phòng/SBD của học sinh đó.
+ * - Bản ghi xếp phòng có sẵn được UPDATE; chưa có thì INSERT mã maxepphong mới.
+ * - truongduthi được UPDATE theo kỳ thi + trường THCS, chưa có thì INSERT.
+ */
+function saveAllocation(PDO $pdo, array $exam, array $groups): array
+{
+    $result = computeAll($pdo, $exam, $groups);
+    if (!$result['ok']) return $result;
+
+    $examId = (int)$exam['makythi'];
 
     try {
         $pdo->beginTransaction();
 
-        // Đã có điểm thi thì không cho phân bổ lại
-        $st = $pdo->prepare(
-            "SELECT 1 FROM baithi b JOIN hocsinh h ON h.mahocsinh = b.mahocsinh
-             WHERE h.makythi = ? AND b.diem IS NOT NULL LIMIT 1"
-        );
-        $st->execute([$kid]);
-        if ($st->fetchColumn()) {
-            throw new RuntimeException('Kỳ thi đã có điểm bài thi nên không thể phân bổ lại phòng thi.');
-        }
+        $checkScore = $pdo->prepare("
+            SELECT COUNT(*)
+            FROM baithi
+            WHERE mahocsinh = ? AND diem IS NOT NULL
+        ");
 
-        // Điểm thi cũ đã có phân công coi thi -> không cho đổi
-        $st = $pdo->prepare("SELECT matruong, tentruong FROM truonghoc WHERE ladiemthi = 1 AND matruong <> ?");
-        $st->execute([$venueId]);
-        $used = $pdo->prepare("SELECT 1 FROM phanconggacthi WHERE madiadiemthi = ? LIMIT 1");
-        foreach ($st->fetchAll() as $old) {
-            $used->execute([$old['matruong']]);
-            if ($used->fetchColumn()) {
-                throw new RuntimeException("Điểm thi cũ \"{$old['tentruong']}\" đã có phân công coi thi nên không thể đổi sang điểm thi khác.");
+        $findRoom = $pdo->prepare("
+            SELECT maxepphong, maphong
+            FROM xepphongthi
+            WHERE mahocsinh = ?
+            ORDER BY maxepphong
+            LIMIT 1
+        ");
+
+        $findSbdConflict = $pdo->prepare("
+            SELECT mahocsinh
+            FROM hocsinh
+            WHERE sobaodanh = ? AND mahocsinh <> ?
+            LIMIT 1
+        ");
+
+        $maxId = (int)$pdo->query("
+            SELECT COALESCE(MAX(maxepphong), 0)
+            FROM xepphongthi
+            FOR UPDATE
+        ")->fetchColumn();
+
+        $insertRoom = $pdo->prepare("
+            INSERT INTO xepphongthi (maxepphong, mahocsinh, maphong)
+            VALUES (?, ?, ?)
+        ");
+        $updateRoom = $pdo->prepare("
+            UPDATE xepphongthi
+            SET maphong = ?
+            WHERE maxepphong = ?
+        ");
+        $updateSbd = $pdo->prepare("
+            UPDATE hocsinh
+            SET sobaodanh = ?
+            WHERE mahocsinh = ? AND makythi = ?
+        ");
+
+        // Kiểm tra tất cả học sinh trước khi ghi để tránh lưu dở dang.
+        foreach ($result['venues'] as $venue) {
+            foreach ($venue['rooms'] as $room) {
+                foreach ($room['students'] as $student) {
+                    $checkScore->execute([$student['id']]);
+                    $hasScore = (int)$checkScore->fetchColumn() > 0;
+
+                    $findRoom->execute([$student['id']]);
+                    $existingRoom = $findRoom->fetch();
+
+                    if ($hasScore && $existingRoom && (int)$existingRoom['maphong'] !== (int)$room['id']) {
+                        throw new RuntimeException(
+                            'Học sinh ' . $student['name'] . ' đã có điểm bài thi và đang được xếp ở phòng khác. Không thể đổi phòng để bảo vệ kết quả hiện có.'
+                        );
+                    }
+                    if ($hasScore && !$existingRoom) {
+                        throw new RuntimeException(
+                            'Học sinh ' . $student['name'] . ' đã có điểm bài thi nhưng chưa có bản ghi xếp phòng. Cần kiểm tra thủ công trước khi cấp SBD mới.'
+                        );
+                    }
+
+                    $findSbdConflict->execute([$student['sbd'], $student['id']]);
+                    if ($findSbdConflict->fetch()) {
+                        throw new RuntimeException('SBD ' . $student['sbd'] . ' đã được cấp cho học sinh khác. Vui lòng kiểm tra mã điểm thi/phòng.');
+                    }
+                }
             }
         }
 
-        // Cờ điểm thi
-        $pdo->exec("UPDATE truonghoc SET ladiemthi = 0 WHERE ladiemthi = 1");
-        $pdo->prepare("UPDATE truonghoc SET ladiemthi = 1 WHERE matruong = ?")->execute([$venueId]);
+        // Lưu danh sách trường dự thi mà không xóa bản ghi cũ.
+        $findSchoolMapping = $pdo->prepare("
+            SELECT 1
+            FROM truongduthi
+            WHERE makythi = ? AND matruongthcs = ?
+            LIMIT 1
+        ");
+        $updateSchoolMapping = $pdo->prepare("
+            UPDATE truongduthi
+            SET madiadiemthi = ?
+            WHERE makythi = ? AND matruongthcs = ?
+        ");
+        $insertSchoolMapping = $pdo->prepare("
+            INSERT INTO truongduthi (makythi, madiadiemthi, matruongthcs)
+            VALUES (?, ?, ?)
+        ");
 
-        // 2 trường dự thi
-        $pdo->prepare("DELETE FROM truongduthi WHERE makythi = ?")->execute([$kid]);
-        $ins = $pdo->prepare("INSERT INTO truongduthi (makythi, madiadiemthi, matruongthcs) VALUES (?, ?, ?)");
-        foreach ($alloc['schools'] as $sc) {
-            $ins->execute([$kid, $venueId, $sc['id']]);
+        foreach ($result['venues'] as $venue) {
+            foreach ($venue['schools'] as $school) {
+                $findSchoolMapping->execute([$examId, $school['id']]);
+                if ($findSchoolMapping->fetchColumn()) {
+                    $updateSchoolMapping->execute([$venue['venueId'], $examId, $school['id']]);
+                } else {
+                    $insertSchoolMapping->execute([$examId, $venue['venueId'], $school['id']]);
+                }
+            }
+
+            // Chỉ bật cờ cho điểm thi đã chọn; không tắt cờ của trường khác.
+            $pdo->prepare("
+                UPDATE truonghoc SET ladiemthi = 1 WHERE matruong = ?
+            ")->execute([$venue['venueId']]);
         }
 
-        // Xóa phân bổ & SBD cũ của kỳ thi, ghi phân bổ mới
-        $pdo->prepare(
-            "DELETE x FROM xepphongthi x JOIN hocsinh h ON h.mahocsinh = x.mahocsinh WHERE h.makythi = ?"
-        )->execute([$kid]);
-        $pdo->prepare("UPDATE hocsinh SET sobaodanh = NULL WHERE makythi = ?")->execute([$kid]);
+        // Lưu phòng và SBD. Không xóa bản ghi xếp phòng đang có.
+        foreach ($result['venues'] as $venue) {
+            foreach ($venue['rooms'] as $room) {
+                foreach ($room['students'] as $student) {
+                    $findRoom->execute([$student['id']]);
+                    $existingRoom = $findRoom->fetch();
 
-        $insRoom = $pdo->prepare("INSERT INTO xepphongthi (mahocsinh, maphong) VALUES (?, ?)");
-        $updSbd  = $pdo->prepare("UPDATE hocsinh SET sobaodanh = ? WHERE mahocsinh = ?");
-        foreach ($alloc['rooms'] as $room) {
-            foreach ($room['students'] as $stu) {
-                $insRoom->execute([$stu['id'], $room['id']]);
-                $updSbd->execute([$stu['sbd'], $stu['id']]);
+                    if ($existingRoom) {
+                        $updateRoom->execute([$room['id'], $existingRoom['maxepphong']]);
+                    } else {
+                        $maxId++;
+                        $insertRoom->execute([$maxId, $student['id'], $room['id']]);
+                    }
+
+                    $updateSbd->execute([$student['sbd'], $student['id'], $examId]);
+                }
             }
         }
 
         $pdo->commit();
-    } catch (Throwable $e) {
-        if ($pdo->inTransaction()) $pdo->rollBack();
-        return fail('SAVE_ERROR', ($e instanceof RuntimeException) ? $e->getMessage() : 'Lỗi hệ thống, vui lòng thử lại sau.');
-    }
 
-    $alloc['time'] = date('H:i:s d/m/Y');
-    return [
-        'ok'      => true,
-        'message' => 'Cập nhật địa điểm thi và phân bổ phòng thi thành công',
-        'data'    => $alloc,
-    ];
+        $result['time'] = date('H:i:s d/m/Y');
+        return [
+            'ok' => true,
+            'message' => 'Đã lưu cấu hình điểm thi, phòng thi và số báo danh thành công.',
+            'data' => $result,
+        ];
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        return failResult('SAVE_ERROR', 'Không thể lưu dữ liệu.', $e->getMessage());
+    }
 }
 
-/* ===================== KỲ THI HIỆN TẠI ===================== */
-$kythi = $pdo->query("SELECT makythi, namtuyensinh FROM kythituyensinh ORDER BY namtuyensinh DESC LIMIT 1")->fetch();
-
-/* ===================== AJAX (POST JSON) ===================== */
+/* ===================== AJAX ===================== */
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    header('Content-Type: application/json; charset=utf-8');
-
     if (!$isSoGD) {
-        http_response_code(403);
-        echo json_encode(['ok' => false, 'message' => 'Bạn không có quyền thực hiện thao tác này.'], JSON_UNESCAPED_UNICODE);
-        exit;
-    }
-    if (!$kythi) {
-        echo json_encode(fail('NO_EXAM', 'Chưa có kỳ thi tuyển sinh nào trong database.'), JSON_UNESCAPED_UNICODE);
-        exit;
+        jsonResponse(['ok' => false, 'message' => 'Bạn không có quyền thực hiện chức năng này.'], 403);
     }
 
-    $input  = json_decode(file_get_contents('php://input'), true) ?: [];
-    $action = $input['action'] ?? '';
+    $raw = file_get_contents('php://input');
+    $input = json_decode($raw, true);
+
+    if (!is_array($input)) {
+        jsonResponse(failResult('BAD_JSON', 'Dữ liệu gửi lên không hợp lệ.'), 400);
+    }
+
+    $action = (string)($input['action'] ?? '');
+    $groups = is_array($input['groups'] ?? null) ? $input['groups'] : [];
 
     try {
         if ($action === 'preview') {
-            $res = computeAllocation($pdo, $kythi, $input['venue'] ?? null, $input['thcs'] ?? []);
+            $response = computeAll($pdo, $kythi, $groups);
         } elseif ($action === 'save') {
-            $res = saveConfig($pdo, $kythi, $input);
+            $response = saveAllocation($pdo, $kythi, $groups);
         } else {
-            $res = fail('INVALID', 'Yêu cầu không hợp lệ.');
+            $response = failResult('INVALID_ACTION', 'Thao tác không hợp lệ.');
         }
+        jsonResponse($response, $response['ok'] ? 200 : 422);
     } catch (Throwable $e) {
-        $res = fail('ERROR', 'Lỗi hệ thống, vui lòng thử lại sau.');
+        jsonResponse(failResult('SERVER_ERROR', 'Lỗi xử lý máy chủ.', $e->getMessage()), 500);
     }
-    echo json_encode($res, JSON_UNESCAPED_UNICODE);
-    exit;
 }
 
 /* ===================== DỮ LIỆU HIỂN THỊ ===================== */
 if (!$isSoGD) {
     http_response_code(403);
-    exit('Bạn không có quyền truy cập trang này. (Cần đăng nhập bằng tài khoản Sở GD&ĐT)');
+    exit('Bạn không có quyền truy cập trang này.');
 }
-if (!$kythi) {
-    exit('Chưa có kỳ thi tuyển sinh nào trong bảng kythituyensinh.');
-}
-$kid = (int)$kythi['makythi'];
 
-$thpt = array_map(function ($r) {
-    return [
-        'id'       => (int)$r['matruong'],
-        'code'     => 'THPT' . str_pad((string)$r['matruong'], 2, '0', STR_PAD_LEFT),
-        'name'     => $r['tentruong'],
-        'ward'     => $r['tenphuong'],
-        'rooms'    => (int)$r['rooms'],
-        'capacity' => (int)$r['capacity'],
+$st = $pdo->prepare("
+    SELECT t.matruong, t.tentruong,
+           UPPER(TRIM(t.loaitruong)) AS loai,
+           COALESCE(t.maphuong, 0) AS maphuong,
+           COALESCE(p.tenphuong, '(Chưa có khu vực)') AS tenphuong,
+           (SELECT COUNT(*) FROM phong r
+             WHERE r.matruong = t.matruong AND r.succhua > 0) AS rooms,
+           (SELECT COALESCE(SUM(r.succhua), 0) FROM phong r
+             WHERE r.matruong = t.matruong AND r.succhua > 0) AS capacity,
+           (SELECT COUNT(*) FROM hocsinh h
+             WHERE h.matruongdanghoc = t.matruong AND h.makythi = ?) AS students
+    FROM truonghoc t
+    LEFT JOIN phuong p ON p.maphuong = t.maphuong
+    WHERE UPPER(TRIM(t.loaitruong)) IN ('THPT', 'THCS')
+    ORDER BY p.tenphuong, t.tentruong
+");
+$st->execute([$examId]);
+$schools = [];
+
+foreach ($st->fetchAll() as $row) {
+    $schools[] = [
+        'id' => (int)$row['matruong'],
+        'code' => $row['loai'] . str_pad((string)$row['matruong'], 2, '0', STR_PAD_LEFT),
+        'name' => $row['tentruong'],
+        'type' => $row['loai'],
+        'wardId' => (int)$row['maphuong'],
+        'ward' => $row['tenphuong'],
+        'rooms' => (int)$row['rooms'],
+        'capacity' => (int)$row['capacity'],
+        'students' => (int)$row['students'],
     ];
-}, $pdo->query(
-    "SELECT t.matruong, t.tentruong, COALESCE(p.tenphuong, '') AS tenphuong,
-            (SELECT COUNT(*) FROM phong r WHERE r.matruong = t.matruong AND r.succhua > 0) AS rooms,
-            (SELECT COALESCE(SUM(r.succhua), 0) FROM phong r WHERE r.matruong = t.matruong AND r.succhua > 0) AS capacity
-     FROM truonghoc t LEFT JOIN phuong p ON p.maphuong = t.maphuong
-     WHERE UPPER(TRIM(t.loaitruong)) = 'THPT'
-     ORDER BY t.tentruong"
-)->fetchAll());
+}
 
-$st = $pdo->prepare(
-    "SELECT t.matruong, t.tentruong, COALESCE(p.tenphuong, '') AS tenphuong,
-            (SELECT COUNT(*) FROM hocsinh h WHERE h.matruongdanghoc = t.matruong AND h.makythi = ?) AS students
-     FROM truonghoc t LEFT JOIN phuong p ON p.maphuong = t.maphuong
-     WHERE UPPER(TRIM(t.loaitruong)) = 'THCS'
-     ORDER BY t.tentruong"
+$st = $pdo->prepare("
+    SELECT madiadiemthi, matruongthcs
+    FROM truongduthi
+    WHERE makythi = ?
+    ORDER BY madiadiemthi, matruongthcs
+");
+$st->execute([$examId]);
+$grouped = [];
+foreach ($st->fetchAll() as $row) {
+    $venue = (int)$row['madiadiemthi'];
+    $school = (int)$row['matruongthcs'];
+    if (!isset($grouped[$venue])) $grouped[$venue] = [];
+    if (!in_array($school, $grouped[$venue], true)) $grouped[$venue][] = $school;
+}
+
+$savedGroups = [];
+foreach ($grouped as $venue => $ids) {
+    // Chỉ nạp cấu hình còn đúng loại trường và không vượt giới hạn.
+    $savedGroups[] = ['venue' => (int)$venue, 'thcs' => array_slice($ids, 0, MAX_SCHOOLS_PER_VENUE)];
+}
+
+$init = [
+    'exam' => ['id' => $examId, 'year' => (int)$kythi['namtuyensinh']],
+    'schools' => $schools,
+    'saved' => $savedGroups,
+    'maxPerVenue' => MAX_SCHOOLS_PER_VENUE,
+];
+$initJson = json_encode(
+    $init,
+    JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT
 );
-$st->execute([$kid]);
-$thcs = array_map(function ($r) {
-    return [
-        'id'       => (int)$r['matruong'],
-        'code'     => 'THCS' . str_pad((string)$r['matruong'], 2, '0', STR_PAD_LEFT),
-        'name'     => $r['tentruong'],
-        'ward'     => $r['tenphuong'],
-        'students' => (int)$r['students'],
-    ];
-}, $st->fetchAll());
 
-// Cấu hình đã lưu
-$st = $pdo->prepare("SELECT madiadiemthi, matruongthcs FROM truongduthi WHERE makythi = ?");
-$st->execute([$kid]);
-$savedRows = $st->fetchAll();
-$savedVenue = $savedRows ? (int)$savedRows[0]['madiadiemthi'] : null;
-$savedThcs  = array_map(function ($r) { return (int)$r['matruongthcs']; }, $savedRows);
-
-$initJson = json_encode([
-    'kythi' => ['id' => $kid, 'year' => (int)$kythi['namtuyensinh']],
-    'thpt'  => $thpt,
-    'thcs'  => $thcs,
-    'saved' => ['venue' => $savedVenue, 'thcs' => $savedThcs],
-], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
-?>
-<?php
-    require(__DIR__ . "/../../../components/layout/header.php");
-    require(__DIR__ . "/../../../components/layout/sidebar.php");
+/* ===================== GIAO DIỆN HEADER/SIDEBAR ===================== */
+$headerFile = __DIR__ . '/../../../components/layout/header.php';
+$sidebarFile = __DIR__ . '/../../../components/layout/sidebar.php';
+if (is_file($headerFile)) require_once $headerFile;
+if (is_file($sidebarFile)) require_once $sidebarFile;
 ?>
 <!DOCTYPE html>
 <html lang="vi">
@@ -443,436 +667,618 @@ $initJson = json_encode([
     </script>
 </head>
 <body class="bg-gray-50 text-gray-800">
-    <?php
-        renderHeader();
-        renderSidebar();
-    ?>
+<?php
+if (function_exists('renderHeader')) renderHeader();
+if (function_exists('renderSidebar')) renderSidebar();
+?>
 
-<div class="ml-72 pt-24 max-w-7xl mx-auto p-8">
+<!-- MODAL THÔNG BÁO -->
+<div id="custom-modal" class="fixed inset-0 z-[100] hidden items-center justify-center bg-black/50">
+    <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md mx-4">
+        <div id="modal-title" class="text-lg font-bold text-gray-900 mb-2">Thông báo</div>
+        <div id="modal-message" class="text-sm text-gray-600 mb-6 whitespace-pre-line"></div>
+        <div class="flex justify-end gap-3">
+            <button id="modal-cancel-btn" type="button" onclick="closeModal(false)"
+                class="hidden border bg-white text-gray-700 rounded-xl px-4 py-2 hover:bg-gray-100 text-sm font-medium">Hủy</button>
+            <button id="modal-ok-btn" type="button" onclick="closeModal(true)"
+                class="bg-blue-600 text-white rounded-xl px-5 py-2 hover:bg-blue-700 text-sm font-medium">Xác nhận</button>
+        </div>
+    </div>
+</div>
 
-    <!-- TIÊU ĐỀ TRANG -->
-    <div class="flex justify-between items-center mb-6">
+<main class="ml-72 pt-24 max-w-7xl mx-auto p-8">
+    <div class="flex flex-wrap justify-between items-center gap-4 mb-6">
         <div>
-            <h1 class="font-bold text-2xl mb-1">Quản lý địa điểm thi</h1>
+            <h1 class="font-bold text-2xl mb-1 text-gray-900">Quản lý địa điểm thi</h1>
             <p class="text-gray-500 text-sm">
-                Kỳ thi tuyển sinh năm <b><?= (int)$kythi['namtuyensinh'] ?></b> - Thiết lập điểm thi, trường dự thi và phòng thi
+                Kỳ thi tuyển sinh năm <b><?= (int)$kythi['namtuyensinh'] ?></b>
+                — Chọn điểm thi và trường THCS dự thi
             </p>
         </div>
         <div class="flex items-center gap-3">
-            <span id="dirty-badge" class="hidden text-xs font-medium text-yellow-800 bg-yellow-100 border border-yellow-300 rounded-full px-3 py-1">Có thay đổi chưa lưu</span>
-            <button type="button" onclick="cancelChanges()" class="border bg-white text-gray-700 rounded-lg px-5 py-3 hover:bg-gray-100 text-sm font-medium">Hủy</button>
-            <button type="button" id="save-btn" onclick="saveAll()" class="bg-gray-900 text-white rounded-lg px-6 py-3 hover:bg-gray-800 text-sm font-medium shadow-sm disabled:opacity-50">Lưu danh sách</button>
+            <span id="dirty-badge" class="hidden text-xs font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded-full px-3 py-1">Có thay đổi chưa lưu</span>
+            <button type="button" onclick="cancelChanges()" class="border bg-white text-gray-700 rounded-xl px-4 py-2.5 hover:bg-gray-50 text-sm font-medium shadow-sm">Hủy</button>
+            <button type="button" id="save-btn" onclick="saveAll()" class="bg-gray-900 text-white rounded-xl px-5 py-2.5 hover:bg-gray-800 text-sm font-medium shadow-sm disabled:opacity-50">Lưu danh sách</button>
         </div>
     </div>
 
-    <!-- KẾT QUẢ SAU KHI LƯU -->
-    <div id="result-panel" class="hidden border border-green-300 bg-green-50 rounded-xl p-6 mb-6">
-        <div class="font-bold text-green-800 mb-3">Cập nhật địa điểm thi và phân bổ phòng thi thành công</div>
+    <div id="result-panel" class="hidden border border-emerald-200 bg-emerald-50 rounded-2xl p-6 mb-6">
+        <div class="font-bold text-emerald-800 mb-2">Cập nhật thành công</div>
         <div id="result-body" class="text-sm text-gray-700"></div>
     </div>
 
-    <!-- Bước 1: chọn điểm thi -->
-    <div class="border bg-white rounded-xl shadow-sm mb-6">
-        <div class="p-4 border-b bg-gray-50 rounded-t-xl font-bold text-sm text-gray-700 flex flex-wrap gap-3 justify-between items-center">
-            <span>Bước 1: Chọn điểm thi (đúng 1 trường THPT)</span>
-            <div class="relative">
-                <input id="search-venue" type="text" autocomplete="off" placeholder="Tìm tên trường THPT..."
-                       oninput="onSearch('venue')" onfocus="onSearch('venue')" onkeydown="onSearchKey(event,'venue')"
-                       class="border rounded-lg px-3 py-2 text-sm font-normal bg-white outline-none focus:ring-2 focus:ring-gray-900 w-64">
-                <div id="suggest-venue" class="hidden absolute left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg z-30 max-h-72 overflow-y-auto font-normal"></div>
-            </div>
+    <!-- THANH CÔNG CỤ -->
+    <div class="border border-gray-200 bg-white rounded-2xl shadow-sm mb-6 p-4 flex flex-wrap items-center gap-3">
+        <button type="button" onclick="autoAssign()" class="bg-blue-600 text-white rounded-xl px-4 py-2.5 hover:bg-blue-700 text-sm font-medium shadow-sm">
+            ⚡ Tự động chia điểm thi
+        </button>
+        <div class="ml-auto flex flex-wrap items-center gap-3">
+            <select id="ward-filter" onchange="renderAreas()" class="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white">
+                <option value="">Tất cả khu vực</option>
+            </select>
+            <input id="search-box" type="text" autocomplete="off" placeholder="Tìm tên trường / khu vực..."
+                oninput="renderAreas()" class="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white w-64">
         </div>
-        <div class="overflow-x-auto max-h-80 overflow-y-auto">
-            <table class="w-full text-left border-collapse">
-                <thead class="sticky top-0">
-                    <tr class="bg-gray-100 border-b text-sm text-gray-600">
-                        <th class="p-3 w-12"></th><th class="p-3">Mã trường</th><th class="p-3">Tên trường THPT</th>
-                        <th class="p-3">Phường</th><th class="p-3">Số phòng</th><th class="p-3">Tổng sức chứa</th>
-                    </tr>
-                </thead>
-                <tbody id="body-venue" class="text-sm"></tbody>
-            </table>
-        </div>
-        <div id="sel-venue" class="px-4 py-3 border-t text-sm text-gray-600"></div>
     </div>
 
-    <!-- Bước 2: chọn 2 trường THCS -->
-    <div class="border bg-white rounded-xl shadow-sm mb-6">
-        <div class="p-4 border-b bg-gray-50 rounded-t-xl font-bold text-sm text-gray-700 flex flex-wrap gap-3 justify-between items-center">
-            <span>Bước 2: Chọn 2 trường THCS dự thi <span id="thcs-counter" class="ml-2 text-xs font-normal text-gray-500"></span></span>
-            <div class="relative">
-                <input id="search-thcs" type="text" autocomplete="off" placeholder="Tìm tên trường THCS..."
-                       oninput="onSearch('thcs')" onfocus="onSearch('thcs')" onkeydown="onSearchKey(event,'thcs')"
-                       class="border rounded-lg px-3 py-2 text-sm font-normal bg-white outline-none focus:ring-2 focus:ring-gray-900 w-64">
-                <div id="suggest-thcs" class="hidden absolute left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg z-30 max-h-72 overflow-y-auto font-normal"></div>
-            </div>
+    <!-- KHUNG 1 -->
+    <section class="border border-gray-200 bg-white rounded-2xl shadow-sm mb-6 overflow-hidden">
+        <div class="p-4 border-b border-gray-200 bg-gray-50 font-bold text-sm text-gray-700 flex flex-wrap items-center justify-between gap-2">
+            <span>🏫 Khung 1: Thêm &amp; Chọn trường làm điểm thi thủ công</span>
+            <span class="text-xs font-normal text-gray-500">Chỉ chọn trường THPT có phòng thi</span>
         </div>
-        <div class="overflow-x-auto max-h-80 overflow-y-auto">
-            <table class="w-full text-left border-collapse">
-                <thead class="sticky top-0">
-                    <tr class="bg-gray-100 border-b text-sm text-gray-600">
-                        <th class="p-3 w-12"></th><th class="p-3">Mã trường</th><th class="p-3">Tên trường THCS</th>
-                        <th class="p-3">Phường</th><th class="p-3">Số học sinh đăng ký thi</th>
-                    </tr>
-                </thead>
-                <tbody id="body-thcs" class="text-sm"></tbody>
-            </table>
+        <div class="p-4 flex flex-wrap items-center gap-3">
+            <select id="manual-venue-select" class="flex-1 min-w-[280px] border border-gray-300 rounded-xl px-3 py-2.5 text-sm bg-white"></select>
+            <button type="button" onclick="confirmManualAdd()" class="bg-emerald-600 text-white rounded-xl px-5 py-2.5 hover:bg-emerald-700 text-sm font-medium">
+                ➕ Thêm điểm thi này
+            </button>
         </div>
-        <div id="sel-thcs" class="px-4 py-3 border-t text-sm text-gray-600"></div>
-    </div>
+    </section>
 
-    <!-- Nút sinh phòng -->
+    <!-- KHUNG 2 -->
+    <section class="border border-gray-200 bg-white rounded-2xl shadow-sm mb-6 overflow-hidden">
+        <div class="p-4 border-b border-gray-200 bg-gray-50 font-bold text-sm text-gray-700 flex flex-wrap justify-between items-center gap-2">
+            <span>👥 Khung 2: Phân bổ trường dự thi cho điểm thi</span>
+            <span id="summary-line" class="font-normal text-xs text-gray-500"></span>
+        </div>
+        <div id="area-list" class="max-h-[40rem] overflow-y-auto divide-y divide-gray-200"></div>
+    </section>
+
     <div class="flex flex-wrap items-center gap-3 mb-6">
-        <button type="button" id="gen-btn" onclick="generate()" class="bg-gray-900 text-white rounded-lg px-6 py-3 hover:bg-gray-800 text-sm font-medium shadow-sm disabled:opacity-50">
-            Tự động sinh phòng thi và phân bổ thí sinh
-        </button>
-        <button type="button" id="edit-btn" onclick="unlockEdit()" class="hidden border bg-white text-gray-700 rounded-lg px-5 py-3 hover:bg-gray-100 text-sm font-medium">
-            Chỉnh sửa lại
+        <button type="button" id="gen-btn" onclick="generate()" class="bg-gray-900 text-white rounded-xl px-6 py-3 hover:bg-gray-800 text-sm font-medium disabled:opacity-50">
+            🔍 Sinh phòng thi và phân bổ thí sinh (Xem trước)
         </button>
     </div>
 
-    <!-- Preview -->
-    <div id="preview-card" class="hidden border bg-white rounded-xl shadow-sm mb-8">
-        <div class="p-4 border-b bg-gray-50 rounded-t-xl font-bold text-sm text-gray-700">Xem trước phòng thi và thí sinh</div>
+    <section id="preview-card" class="hidden border border-gray-200 bg-white rounded-2xl shadow-sm mb-8 overflow-hidden">
+        <div class="p-4 border-b border-gray-200 bg-gray-50 font-bold text-sm text-gray-700">Xem trước phòng thi và danh sách thí sinh</div>
         <div class="p-4">
-            <div id="preview-summary" class="text-sm text-gray-700 mb-4"></div>
+            <div id="preview-summary" class="text-sm text-gray-700 mb-4 font-medium"></div>
             <div id="preview-rooms"></div>
         </div>
-    </div>
-
-</div>
+    </section>
+</main>
 
 <script>
-    const INIT = <?= $initJson ?>;
-    const HOME_URL = <?= json_encode(HOME_URL) ?>;
+const INIT = <?= $initJson ?: '{}' ?>;
+const MAX_PER_VENUE = Number(INIT.maxPerVenue || 2);
+const byId = new Map((INIT.schools || []).map(s => [Number(s.id), s]));
 
-    const state = {
-        venue: INIT.saved.venue,
-        thcs: [...INIT.saved.thcs],
-        preview: null,
-        previewSaved: false,
-        locked: false
-    };
+const state = {
+    groups: new Map(),
+    preview: null,
+    previewSaved: false
+};
 
-    function snapshot() {
-        return JSON.stringify({ v: state.venue, t: [...state.thcs].sort() });
+(INIT.saved || []).forEach(g => {
+    const venue = Number(g.venue);
+    const validThcs = (g.thcs || [])
+        .map(Number)
+        .filter(id => byId.has(id) && byId.get(id).type === 'THCS')
+        .slice(0, MAX_PER_VENUE);
+    const venueInfo = byId.get(venue);
+    if (venueInfo && venueInfo.type === 'THPT' && venueInfo.rooms > 0) {
+        state.groups.set(venue, validThcs);
     }
-    let savedSnap = snapshot();
+});
 
-    function isDirty() { return snapshot() !== savedSnap || (state.preview !== null && !state.previewSaved); }
+function snapshot() {
+    return JSON.stringify(
+        [...state.groups]
+            .map(([v, ids]) => [Number(v), [...ids].sort((a,b) => a-b)])
+            .sort((a,b) => a[0]-b[0])
+    );
+}
+let savedSnap = snapshot();
 
-    /* ===================== TIỆN ÍCH ===================== */
-    function removeAccents(str) {
-        return String(str ?? '')
-            .normalize('NFC')
-            .split('')
-            .map(c => c === 'đ' ? 'd' : c === 'Đ' ? 'D' : c.normalize('NFD').replace(/[\u0300-\u036f]/g, ''))
-            .join('')
-            .toLowerCase();
-    }
-    function highlightMatch(name, kw) {
-        const text = String(name).normalize('NFC');
-        const idx = removeAccents(text).indexOf(kw);
-        if (idx < 0) return escapeHtml(text);
-        return escapeHtml(text.slice(0, idx))
-            + '<mark class="bg-yellow-200 rounded px-0.5">' + escapeHtml(text.slice(idx, idx + kw.length)) + '</mark>'
-            + escapeHtml(text.slice(idx + kw.length));
-    }
-    const SRC = { venue: () => INIT.thpt, thcs: () => INIT.thcs };
-    function nameOf(list, id) { const s = list.find(x => x.id === id); return s ? s.name : ''; }
+function isDirty() {
+    return snapshot() !== savedSnap || (state.preview !== null && !state.previewSaved);
+}
 
-    async function callApi(payload) {
-        try {
-            const res = await fetch(window.location.href, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload)
-            });
-            return await res.json();
-        } catch (e) {
-            return { ok: false, message: "Không kết nối được máy chủ hoặc phản hồi không hợp lệ." };
-        }
-    }
-    function errText(r) { return r.message + (r.detail ? "\n\n" + r.detail : ""); }
+let modalCallback = null;
+function showModal(title, message, showCancel = false, callback = null) {
+    document.getElementById('modal-title').textContent = title;
+    document.getElementById('modal-message').textContent = message;
+    document.getElementById('modal-cancel-btn').classList.toggle('hidden', !showCancel);
+    const modal = document.getElementById('custom-modal');
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    modalCallback = callback;
+}
+function closeModal(result) {
+    const modal = document.getElementById('custom-modal');
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+    const callback = modalCallback;
+    modalCallback = null;
+    if (callback) callback(result);
+}
 
-    /* ===================== GỢI Ý TÊN TRƯỜNG ===================== */
-    const sug = { venue: { items: [], active: -1 }, thcs: { items: [], active: -1 } };
+function normalizeText(value) {
+    return String(value ?? '').normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase();
+}
+function assignedMap() {
+    const map = new Map();
+    state.groups.forEach((ids, venue) => ids.forEach(id => map.set(Number(id), Number(venue))));
+    return map;
+}
+function venueCandidates() {
+    return INIT.schools.filter(s => s.type === 'THPT' && Number(s.rooms) > 0);
+}
+function buildGroups() {
+    return [...state.groups].map(([venue, thcs]) => ({
+        venue: Number(venue),
+        thcs: thcs.map(Number)
+    }));
+}
+function invalidatePreview() {
+    state.preview = null;
+    state.previewSaved = false;
+    renderAll();
+}
 
-    function hideSuggest(key) {
-        document.getElementById('suggest-' + key).classList.add('hidden');
-        sug[key].active = -1;
-    }
-
-    function onSearch(key) {
-        renderTable(key);
-        const box = document.getElementById('suggest-' + key);
-        const kw = removeAccents(document.getElementById('search-' + key).value.trim());
-        if (!kw) { hideSuggest(key); return; }
-
-        sug[key].items = SRC[key]().filter(s => removeAccents(s.name).includes(kw)).slice(0, 8);
-        sug[key].active = -1;
-
-        if (sug[key].items.length === 0) {
-            box.innerHTML = `<div class="px-4 py-3 text-sm text-gray-400 italic">Không tìm thấy trường phù hợp</div>`;
-        } else {
-            box.innerHTML = sug[key].items.map((s, i) => `
-                <div class="suggest-item px-4 py-2.5 cursor-pointer text-sm text-gray-800 hover:bg-gray-100" onmousedown="pickSuggest('${key}', ${i})">
-                    <div class="font-medium">${highlightMatch(s.name, kw)}</div>
-                    <div class="text-xs text-gray-400">${escapeHtml(s.code)} · ${escapeHtml(s.ward)}</div>
-                </div>`).join('');
-        }
-        box.classList.remove('hidden');
-    }
-
-    function pickSuggest(key, i) {
-        const s = sug[key].items[i];
-        if (!s) return;
-        document.getElementById('search-' + key).value = s.name;
-        hideSuggest(key);
-        if (key === 'venue') selectVenue(s.id);
-        else addThcs(s.id);
-        renderTable(key);
-    }
-
-    function setActive(key, i) {
-        const items = document.querySelectorAll('#suggest-' + key + ' .suggest-item');
-        items.forEach(el => el.classList.remove('bg-gray-200'));
-        sug[key].active = i;
-        if (items[i]) { items[i].classList.add('bg-gray-200'); items[i].scrollIntoView({ block: 'nearest' }); }
-    }
-
-    function onSearchKey(e, key) {
-        const box = document.getElementById('suggest-' + key);
-        const n = sug[key].items.length;
-        if (box.classList.contains('hidden') || n === 0) return;
-        if (e.key === 'ArrowDown') { e.preventDefault(); setActive(key, (sug[key].active + 1) % n); }
-        else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(key, (sug[key].active - 1 + n) % n); }
-        else if (e.key === 'Enter') {
-            if (sug[key].active >= 0) { e.preventDefault(); pickSuggest(key, sug[key].active); } else hideSuggest(key);
-        } else if (e.key === 'Escape') hideSuggest(key);
-    }
-
-    document.addEventListener('click', function (e) {
-        ['venue', 'thcs'].forEach(k => {
-            if (!e.target.closest('#search-' + k) && !e.target.closest('#suggest-' + k)) hideSuggest(k);
+async function callApi(payload) {
+    try {
+        const response = await fetch(window.location.href, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: JSON.stringify(payload)
         });
-    });
-
-    /* ===================== CHỌN TRƯỜNG ===================== */
-    function selectVenue(id) {
-        if (state.locked) return;
-        state.venue = id;
-        state.preview = null;
-        renderAll();
-    }
-    function addThcs(id) {
-        if (state.locked || state.thcs.includes(id)) return;
-        if (state.thcs.length >= 2) { alert("Chỉ được chọn tối đa 2 trường THCS dự thi."); renderAll(); return; }
-        state.thcs.push(id);
-        state.preview = null;
-        renderAll();
-    }
-    function toggleThcs(id, checked) {
-        if (state.locked) return;
-        if (checked) { addThcs(id); return; }
-        state.thcs = state.thcs.filter(x => x !== id);
-        state.preview = null;
-        renderAll();
-    }
-
-    /* ===================== RENDER ===================== */
-    function renderTable(key) {
-        const body = document.getElementById('body-' + key);
-        const kw = removeAccents(document.getElementById('search-' + key).value.trim());
-        const list = SRC[key]().filter(s => !kw ||
-            removeAccents(s.name).includes(kw) || removeAccents(s.ward).includes(kw) || removeAccents(s.code).includes(kw));
-
-        if (SRC[key]().length === 0) {
-            body.innerHTML = `<tr><td colspan="6" class="p-6 text-center text-gray-400 italic">Chưa có trường ${key === 'thcs' ? 'THCS' : 'THPT'} nào trong database (bảng truonghoc).</td></tr>`;
-            return;
+        const raw = await response.text();
+        let data;
+        try {
+            data = JSON.parse(raw);
+        } catch (error) {
+            console.error('Phản hồi PHP không phải JSON:', raw);
+            return {ok:false, message:'Máy chủ trả về dữ liệu không hợp lệ. Kiểm tra lỗi PHP trong log máy chủ.'};
         }
-        if (list.length === 0) {
-            body.innerHTML = `<tr><td colspan="6" class="p-6 text-center text-gray-400 italic">Không có trường phù hợp.</td></tr>`;
-            return;
+        if (!response.ok && !data.message) {
+            data.message = 'Máy chủ trả về HTTP ' + response.status;
         }
+        return data;
+    } catch (error) {
+        console.error(error);
+        return {ok:false, message:'Không kết nối được máy chủ hoặc mất kết nối mạng.'};
+    }
+}
+function errorMessage(result) {
+    return (result.message || 'Có lỗi xảy ra.') + (result.detail ? '\n\n' + result.detail : '');
+}
 
-        const dis = state.locked ? 'disabled' : '';
-        body.innerHTML = list.map(s => {
-            let sel, ctl, extra = '';
-            if (key === 'venue') {
-                sel = state.venue === s.id;
-                ctl = `<input type="radio" name="venue" ${sel ? 'checked' : ''} ${dis} onchange="selectVenue(${s.id})">`;
-                extra = `<td class="p-3">${s.rooms > 0 ? s.rooms + ' phòng' : '<span class="text-red-500">Chưa có phòng</span>'}</td><td class="p-3">${s.capacity}</td>`;
-            } else {
-                sel = state.thcs.includes(s.id);
-                ctl = `<input type="checkbox" ${sel ? 'checked' : ''} ${dis} onchange="toggleThcs(${s.id}, this.checked)">`;
-                extra = `<td class="p-3">${s.students > 0 ? s.students : '<span class="text-red-500">0</span>'}</td>`;
-            }
-            return `<tr class="border-b ${sel ? 'bg-yellow-50' : 'hover:bg-gray-50'}">
-                <td class="p-3 text-center">${ctl}</td>
-                <td class="p-3 font-semibold text-gray-900">${escapeHtml(s.code)}</td>
-                <td class="p-3 font-medium">${escapeHtml(s.name)}</td>
-                <td class="p-3 text-gray-500">${escapeHtml(s.ward)}</td>
-                ${extra}
-            </tr>`;
-        }).join('');
+function addSchool(venueId, schoolId) {
+    venueId = Number(venueId);
+    schoolId = Number(schoolId);
+    if (!schoolId) return;
+
+    const school = byId.get(schoolId);
+    if (!school || school.type !== 'THCS') {
+        showModal('Thông báo', 'Chỉ được chọn trường THCS làm trường dự thi.');
+        return;
     }
 
-    function renderSelected() {
-        const v = document.getElementById('sel-venue');
-        v.innerHTML = state.venue ? `Điểm thi đã chọn: <b>${escapeHtml(nameOf(INIT.thpt, state.venue))}</b>` : `<span class="italic text-gray-400">Chưa chọn điểm thi.</span>`;
-
-        const t = document.getElementById('sel-thcs');
-        t.innerHTML = state.thcs.length
-            ? 'Trường dự thi đã chọn: ' + state.thcs.map(id => `<b>${escapeHtml(nameOf(INIT.thcs, id))}</b>`).join(', ')
-            : `<span class="italic text-gray-400">Chưa chọn trường dự thi.</span>`;
-        document.getElementById('thcs-counter').textContent = `(đã chọn ${state.thcs.length}/2)`;
+    const list = state.groups.get(venueId) || [];
+    if (list.length >= MAX_PER_VENUE) {
+        showModal('Thông báo', 'Mỗi điểm thi chỉ được chọn tối đa ' + MAX_PER_VENUE + ' trường THCS.');
+        return;
+    }
+    if (assignedMap().has(schoolId)) {
+        showModal('Thông báo', 'Trường này đã được phân bổ ở một điểm thi khác.');
+        return;
     }
 
-    function renderPreview() {
-        const card = document.getElementById('preview-card');
-        const p = state.preview;
-        if (!p) { card.classList.add('hidden'); return; }
-        card.classList.remove('hidden');
+    list.push(schoolId);
+    state.groups.set(venueId, list);
+    invalidatePreview();
+}
+function removeSchool(venueId, schoolId) {
+    const list = (state.groups.get(Number(venueId)) || []).filter(id => id !== Number(schoolId));
+    if (list.length) state.groups.set(Number(venueId), list);
+    else state.groups.delete(Number(venueId));
+    invalidatePreview();
+}
+function clearVenue(venueId) {
+    state.groups.delete(Number(venueId));
+    invalidatePreview();
+}
 
-        document.getElementById('preview-summary').innerHTML = `
-            <div>Điểm thi: <b>${escapeHtml(p.venueName)}</b></div>
-            <div>Trường dự thi: ${p.schools.map(s => `<b>${escapeHtml(s.name)}</b> (${s.count} thí sinh)`).join(', ')}</div>
-            <div>Tổng: <b>${p.total}</b> thí sinh - <b>${p.rooms.length}</b> phòng thi (sắp xếp theo tên A-Z)</div>`;
+function renderManualSelect() {
+    const select = document.getElementById('manual-venue-select');
+    const selected = new Set(state.groups.keys());
+    const available = venueCandidates().filter(v => !selected.has(Number(v.id)));
+    select.innerHTML = available.length
+        ? available.map(v => `<option value="${v.id}">${escapeHtml(v.name)} (${v.type} - ${escapeHtml(v.ward)} - ${v.rooms} phòng)</option>`).join('')
+        : '<option value="">Tất cả trường THPT có phòng đã được chọn</option>';
+}
+function confirmManualAdd() {
+    const venueId = Number(document.getElementById('manual-venue-select').value);
+    const venue = byId.get(venueId);
+    if (!venue || venue.type !== 'THPT' || venue.rooms <= 0) {
+        showModal('Thông báo', 'Vui lòng chọn trường THPT có phòng thi hợp lệ.');
+        return;
+    }
+    if (!state.groups.has(venueId)) {
+        state.groups.set(venueId, []);
+        invalidatePreview();
+    }
+}
 
-        document.getElementById('preview-rooms').innerHTML = p.rooms.map((r, i) => {
-            const first = r.students[0].sbd, last = r.students[r.students.length - 1].sbd;
-            return `<details class="border rounded-lg mb-2" ${i === 0 ? 'open' : ''}>
-                <summary class="cursor-pointer px-4 py-3 bg-gray-50 font-medium text-sm">
-                    ${escapeHtml(r.name)} - ${r.students.length}/${r.capacity} thí sinh · SBD ${escapeHtml(first)} → ${escapeHtml(last)}
-                </summary>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-left text-sm">
-                        <thead><tr class="bg-gray-100 border-b text-gray-600">
-                            <th class="p-2 pl-4 w-16">STT</th><th class="p-2">SBD</th><th class="p-2">Họ và tên</th><th class="p-2">Trường THCS</th>
-                        </tr></thead>
-                        <tbody>${r.students.map((s, j) => `
-                            <tr class="border-b">
-                                <td class="p-2 pl-4">${j + 1}</td>
-                                <td class="p-2 font-semibold">${escapeHtml(s.sbd)}</td>
-                                <td class="p-2">${escapeHtml(s.name)}</td>
-                                <td class="p-2 text-gray-500">${escapeHtml(s.school)}</td>
-                            </tr>`).join('')}
-                        </tbody>
-                    </table>
+function buildWardFilter() {
+    const map = new Map();
+    INIT.schools.forEach(s => map.set(Number(s.wardId), s.ward));
+    const select = document.getElementById('ward-filter');
+    select.innerHTML = '<option value="">Tất cả khu vực</option>' +
+        [...map].sort((a,b) => String(a[1]).localeCompare(String(b[1]), 'vi'))
+            .map(([id,name]) => `<option value="${id}">${escapeHtml(name)}</option>`).join('');
+}
+
+function venueCard(venue, assigned) {
+    const ids = state.groups.get(Number(venue.id)) || [];
+    const load = ids.reduce((sum, id) => sum + Number(byId.get(id)?.students || 0), 0);
+    const freeSchools = INIT.schools
+        .filter(s => s.type === 'THCS' && !assigned.has(Number(s.id)))
+        .sort((a,b) => a.name.localeCompare(b.name, 'vi'));
+    const sameWard = freeSchools.filter(s => Number(s.wardId) === Number(venue.wardId));
+    const otherWard = freeSchools.filter(s => Number(s.wardId) !== Number(venue.wardId));
+    const option = s => `<option value="${s.id}">${escapeHtml(s.name)} — ${escapeHtml(s.ward)} (${s.students} HS)</option>`;
+
+    return `
+    <article class="border border-gray-200 rounded-2xl bg-white shadow-sm overflow-hidden">
+        <div class="px-5 py-3.5 bg-gray-50 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3">
+            <div class="flex flex-wrap items-center gap-3">
+                <span class="font-bold text-gray-900 text-sm">${escapeHtml(venue.code)}</span>
+                <span class="font-semibold text-gray-900 text-sm">${escapeHtml(venue.name)}</span>
+                <span class="text-xs rounded-full px-2.5 py-0.5 font-medium bg-blue-100 text-blue-800">THPT</span>
+            </div>
+            <div class="flex items-center gap-3">
+                <span class="text-xs text-gray-500">${venue.rooms} phòng · Sức chứa: <b>${venue.capacity}</b></span>
+                <button type="button" class="text-xs text-red-600 hover:underline font-medium" onclick="clearVenue(${venue.id})">Xóa điểm thi</button>
+            </div>
+        </div>
+        <div class="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="border border-blue-100 bg-blue-50/30 rounded-xl p-4 flex flex-col justify-between">
+                <div>
+                    <div class="text-xs font-bold text-blue-900 uppercase tracking-wider mb-2">🏫 Điểm thi đã chọn</div>
+                    <div class="font-medium text-gray-900 text-sm mb-1">${escapeHtml(venue.name)}</div>
+                    <div class="text-xs text-gray-500">Khu vực: ${escapeHtml(venue.ward)}</div>
                 </div>
-            </details>`;
-        }).join('');
+                <div class="mt-4 pt-3 border-t border-blue-100 flex justify-between items-center text-xs text-blue-900 font-medium">
+                    <span>Trạng thái: Hoạt động</span>
+                    <span class="bg-blue-100 px-2 py-0.5 rounded">${venue.rooms} phòng thi</span>
+                </div>
+            </div>
+            <div class="border border-purple-100 bg-purple-50/30 rounded-xl p-4 flex flex-col justify-between">
+                <div>
+                    <div class="text-xs font-bold text-purple-900 uppercase tracking-wider mb-2 flex items-center justify-between">
+                        <span>👥 Các trường dự thi (Tối đa ${MAX_PER_VENUE})</span>
+                        <span class="font-semibold text-purple-700">${ids.length}/${MAX_PER_VENUE} trường</span>
+                    </div>
+                    <div class="space-y-2 mb-3">
+                        ${ids.length === 0 ? '<div class="text-xs italic text-gray-400 py-1">Chưa chọn trường dự thi nào.</div>' :
+                            ids.map(id => {
+                                const school = byId.get(id);
+                                return `<div class="flex items-center justify-between bg-white border border-purple-200/60 px-3 py-2 rounded-lg text-xs">
+                                    <div>
+                                        <span class="font-medium text-gray-800">${escapeHtml(school?.name || 'Trường không tồn tại')}</span>
+                                        <span class="text-gray-400 block">${escapeHtml(school?.ward || '')} · <b>${school?.students || 0}</b> HS</span>
+                                    </div>
+                                    <button type="button" class="text-red-600 hover:text-red-800 font-medium px-2 py-1 rounded hover:bg-red-50" onclick="removeSchool(${venue.id}, ${id})">Gỡ</button>
+                                </div>`;
+                            }).join('')
+                        }
+                    </div>
+                </div>
+                ${ids.length < MAX_PER_VENUE ? `
+                    <div class="pt-2 border-t border-purple-100">
+                        <select class="w-full border border-purple-200 rounded-lg px-3 py-2 bg-white text-xs"
+                            onchange="addSchool(${venue.id}, this.value); this.value='';">
+                            <option value="">+ Thêm trường THCS dự thi...</option>
+                            ${sameWard.length ? `<optgroup label="Cùng khu vực">${sameWard.map(option).join('')}</optgroup>` : ''}
+                            ${otherWard.length ? `<optgroup label="Khu vực khác">${otherWard.map(option).join('')}</optgroup>` : ''}
+                        </select>
+                    </div>` : '<div class="text-xs text-amber-700 font-medium pt-2 border-t border-purple-100">Đã đủ giới hạn 2 trường dự thi.</div>'}
+            </div>
+        </div>
+        ${load > venue.capacity ? `<div class="px-5 py-2 bg-red-50 border-t border-red-100 text-red-600 text-xs font-bold">⚠️ Số học sinh đăng ký (${load}) vượt sức chứa (${venue.capacity}).</div>` : ''}
+    </article>`;
+}
+
+function renderAreas() {
+    renderManualSelect();
+
+    const box = document.getElementById('area-list');
+    const keyword = normalizeText(document.getElementById('search-box').value.trim());
+    const wardFilter = document.getElementById('ward-filter').value;
+    const configuredIds = new Set([...state.groups.keys()].map(Number));
+
+    const list = venueCandidates().filter(s =>
+        configuredIds.has(Number(s.id)) &&
+        (!wardFilter || String(s.wardId) === wardFilter) &&
+        (!keyword || normalizeText(s.name).includes(keyword) ||
+            normalizeText(s.ward).includes(keyword) || normalizeText(s.code).includes(keyword))
+    );
+
+    if (!list.length) {
+        box.innerHTML = '<div class="p-8 text-center text-gray-400 italic">Chưa có điểm thi nào trong Khung 2. Vui lòng chọn trường ở Khung 1.</div>';
+        return;
     }
 
-    function renderControls() {
-        document.getElementById('gen-btn').disabled = state.locked;
-        document.getElementById('edit-btn').classList.toggle('hidden', !state.locked);
-        document.getElementById('dirty-badge').classList.toggle('hidden', !isDirty());
-    }
-
-    function renderAll() {
-        renderTable('venue'); renderTable('thcs');
-        renderSelected(); renderPreview(); renderControls();
-    }
-
-    /* ===================== SINH PHÒNG & PHÂN BỔ ===================== */
-    async function generate() {
-        if (!state.venue || state.thcs.length !== 2) {
-            alert("Vui lòng chọn đúng 1 điểm thi (THPT) và 2 trường THCS dự thi.");
-            return;
-        }
-        const btn = document.getElementById('gen-btn');
-        btn.disabled = true;
-        const res = await callApi({ action: 'preview', venue: state.venue, thcs: state.thcs });
-        btn.disabled = false;
-
-        if (!res.ok) { alert(errText(res)); return; }   // 4.1 / 4.2
-
-        state.preview = res;
-        state.previewSaved = false;
-        state.locked = true;
-        renderAll();
-        document.getElementById('preview-card').scrollIntoView({ behavior: 'smooth' });
-    }
-
-    // 7.1 Chỉnh sửa lại sau khi xem trước
-    function unlockEdit() {
-        state.locked = false;
-        state.preview = null;
-        state.previewSaved = false;
-        renderAll();
-    }
-
-    /* ===================== LƯU ===================== */
-    async function saveAll() {
-        if (!state.preview) {
-            alert("Vui lòng chọn điểm thi, 2 trường dự thi và nhấn \"Tự động sinh phòng thi và phân bổ thí sinh\" để xem trước trước khi lưu.");
-            return;
-        }
-
-        const p = state.preview;
-        const ok = confirm(
-            `Xác nhận lưu cấu hình?\n\n` +
-            `Điểm thi: ${p.venueName}\n` +
-            `Trường dự thi: ${p.schools.map(s => s.name).join(', ')}\n` +
-            `Số thí sinh: ${p.total} - Số phòng: ${p.rooms.length}`
-        );
-        if (!ok) return;
-
-        const btn = document.getElementById('save-btn');
-        btn.disabled = true;
-        const res = await callApi({ action: 'save', venue: state.venue, thcs: state.thcs });
-        btn.disabled = false;
-
-        if (!res.ok) { alert(errText(res)); return; }
-
-        state.preview = Object.assign({ ok: true }, res.data);
-        state.previewSaved = true;
-        savedSnap = snapshot();
-        renderAll();
-        showResult(res.data);
-        alert(res.message);
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-
-    function showResult(d) {
-        document.getElementById('result-panel').classList.remove('hidden');
-        document.getElementById('result-body').innerHTML = `
-            <table class="text-sm mb-4">
-                <tr><td class="pr-6 py-1 text-gray-500">Điểm thi</td><td class="font-semibold">${escapeHtml(d.venueName)}</td></tr>
-                <tr><td class="pr-6 py-1 text-gray-500">Trường dự thi</td><td class="font-semibold">${d.schools.map(s => escapeHtml(s.name) + ' (' + s.count + ')').join(', ')}</td></tr>
-                <tr><td class="pr-6 py-1 text-gray-500">Tổng thí sinh</td><td class="font-semibold">${d.total}</td></tr>
-                <tr><td class="pr-6 py-1 text-gray-500">Số phòng thi</td><td class="font-semibold">${d.rooms.length}</td></tr>
-                <tr><td class="pr-6 py-1 text-gray-500">Thời gian lưu</td><td class="font-semibold">${escapeHtml(d.time)}</td></tr>
-            </table>
-            <table class="w-full text-left text-sm bg-white border rounded-lg">
-                <thead><tr class="bg-gray-100 border-b text-gray-600"><th class="p-2">Phòng thi</th><th class="p-2">Số thí sinh</th><th class="p-2">SBD từ</th><th class="p-2">SBD đến</th></tr></thead>
-                <tbody>${d.rooms.map(r => `<tr class="border-b">
-                    <td class="p-2 font-medium">${escapeHtml(r.name)}</td><td class="p-2">${r.students.length}</td>
-                    <td class="p-2">${escapeHtml(r.students[0].sbd)}</td><td class="p-2">${escapeHtml(r.students[r.students.length - 1].sbd)}</td>
-                </tr>`).join('')}</tbody>
-            </table>`;
-    }
-
-    /* ===================== HỦY (7.2) ===================== */
-    function cancelChanges() {
-        if (isDirty() && !confirm("Bạn có muốn hủy các thay đổi chưa lưu?")) return;
-        // bỏ thay đổi tạm thời để không bị cảnh báo khi rời trang
-        const s = JSON.parse(savedSnap);
-        state.venue = s.v; state.thcs = s.t;
-        state.preview = null; state.previewSaved = false; state.locked = false;
-        if (HOME_URL) window.location.href = HOME_URL; else window.location.reload();
-    }
-
-    window.addEventListener('beforeunload', function (e) {
-        if (isDirty()) { e.preventDefault(); e.returnValue = ''; }
+    const wards = new Map();
+    list.forEach(s => {
+        if (!wards.has(s.wardId)) wards.set(s.wardId, {name:s.ward, items:[]});
+        wards.get(s.wardId).items.push(s);
     });
 
-    window.onload = function () {
-        renderAll();
-    };
-</script>
+    const assigned = assignedMap();
+    box.innerHTML = [...wards.values()]
+        .sort((a,b) => a.name.localeCompare(b.name, 'vi'))
+        .map(ward => `
+            <div>
+                <div class="bg-gray-100 border-b border-gray-200 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-gray-600 flex justify-between">
+                    <span>Khu vực: ${escapeHtml(ward.name)}</span>
+                    <span class="font-normal text-gray-500">${ward.items.length} điểm thi đang hoạt động</span>
+                </div>
+                <div class="p-4 space-y-4">${ward.items.map(v => venueCard(v, assigned)).join('')}</div>
+            </div>
+        `).join('');
+}
 
+function renderSummary() {
+    const assigned = assignedMap();
+    const unassigned = INIT.schools.filter(s => s.type === 'THCS' && !assigned.has(Number(s.id)));
+    document.getElementById('summary-line').textContent =
+        `Đang cấu hình ${state.groups.size} điểm thi · Còn ${unassigned.length} trường THCS chưa phân bổ`;
+}
+
+function renderPreview() {
+    const card = document.getElementById('preview-card');
+    if (!state.preview) {
+        card.classList.add('hidden');
+        return;
+    }
+    card.classList.remove('hidden');
+    const p = state.preview;
+    document.getElementById('preview-summary').innerHTML =
+        `Tổng hợp: <b>${p.venues.length}</b> điểm thi — <b>${p.total}</b> thí sinh — <b>${p.roomCount}</b> phòng thi.`;
+
+    document.getElementById('preview-rooms').innerHTML = p.venues.map((venue, venueIndex) => `
+        <details class="border border-gray-200 rounded-xl mb-3 overflow-hidden" ${venueIndex === 0 ? 'open' : ''}>
+            <summary class="cursor-pointer px-4 py-3 bg-gray-50 font-semibold text-sm flex flex-wrap justify-between gap-2">
+                <span>${escapeHtml(venue.venueName)} · ${venue.total} thí sinh · ${venue.rooms.length} phòng</span>
+                <span class="text-xs font-normal text-gray-500">${venue.schools.map(s => escapeHtml(s.name) + ' (' + s.count + ')').join(', ')}</span>
+            </summary>
+            <div class="p-3 bg-white space-y-2">
+                ${venue.rooms.map(room => `
+                    <details class="border border-gray-100 rounded-lg overflow-hidden bg-gray-50/50">
+                        <summary class="cursor-pointer px-4 py-2 font-medium text-xs text-gray-700 flex justify-between">
+                            <span>Phòng: <b>${escapeHtml(room.name)}</b></span>
+                            <span class="text-gray-500">${room.students.length}/${room.capacity} thí sinh</span>
+                        </summary>
+                        <div class="overflow-x-auto bg-white border-t border-gray-100">
+                            <table class="w-full text-left text-xs">
+                                <thead><tr class="bg-gray-50 border-b border-gray-100 text-gray-500">
+                                    <th class="p-2 pl-4">STT</th><th class="p-2">SBD</th><th class="p-2">Họ và tên</th><th class="p-2">Trường dự thi</th>
+                                </tr></thead>
+                                <tbody>${room.students.map((student, i) => `
+                                    <tr class="border-b border-gray-50 hover:bg-gray-50">
+                                        <td class="p-2 pl-4 text-gray-400">${i+1}</td>
+                                        <td class="p-2 font-semibold text-gray-900">${escapeHtml(student.sbd)}</td>
+                                        <td class="p-2 font-medium text-gray-800">${escapeHtml(student.name)}</td>
+                                        <td class="p-2 text-gray-500">${escapeHtml(student.school)}</td>
+                                    </tr>`).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </details>
+                `).join('')}
+            </div>
+        </details>
+    `).join('');
+}
+
+function renderControls() {
+    document.getElementById('dirty-badge').classList.toggle('hidden', !isDirty());
+}
+function renderAll() {
+    renderAreas();
+    renderSummary();
+    renderPreview();
+    renderControls();
+}
+
+async function generate() {
+    const groups = buildGroups();
+    if (!groups.length) {
+        showModal('Thông báo', 'Chưa có điểm thi nào được cấu hình.');
+        return;
+    }
+    const button = document.getElementById('gen-btn');
+    button.disabled = true;
+    button.textContent = 'Đang tính toán...';
+
+    const response = await callApi({action:'preview', groups});
+    button.disabled = false;
+    button.textContent = '🔍 Sinh phòng thi và phân bổ thí sinh (Xem trước)';
+
+    if (!response.ok) {
+        showModal('Không thể phân bổ', errorMessage(response));
+        return;
+    }
+
+    state.preview = response;
+    state.previewSaved = false;
+    renderAll();
+    document.getElementById('preview-card').scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+async function saveAll() {
+    if (!state.preview) {
+        showModal('Thông báo', 'Vui lòng xem trước phân bổ trước khi lưu.');
+        return;
+    }
+
+    const preview = state.preview;
+    showModal(
+        'Xác nhận lưu',
+        `Bạn muốn lưu cấu hình này?\n\n- Điểm thi: ${preview.venues.length}\n- Thí sinh: ${preview.total}\n- Phòng thi: ${preview.roomCount}\n\nHệ thống không xóa dữ liệu học sinh hoặc điểm bài thi.`,
+        true,
+        async confirmed => {
+            if (!confirmed) return;
+
+            const button = document.getElementById('save-btn');
+            button.disabled = true;
+            button.textContent = 'Đang lưu...';
+
+            const response = await callApi({action:'save', groups:buildGroups()});
+
+            button.disabled = false;
+            button.textContent = 'Lưu danh sách';
+
+            if (!response.ok) {
+                showModal('Lỗi lưu dữ liệu', errorMessage(response));
+                return;
+            }
+
+            state.preview = response.data;
+            state.previewSaved = true;
+            savedSnap = snapshot();
+            renderAll();
+            showResult(response.data);
+            showModal('Thành công', response.message);
+            window.scrollTo({top:0, behavior:'smooth'});
+        }
+    );
+}
+
+function showResult(data) {
+    document.getElementById('result-panel').classList.remove('hidden');
+    document.getElementById('result-body').innerHTML = `
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-4">
+            <div class="bg-white p-3 rounded-xl border border-emerald-100">
+                <span class="text-gray-500 block text-xs">Số điểm thi</span>
+                <b class="text-lg text-emerald-900">${data.venues.length}</b>
+            </div>
+            <div class="bg-white p-3 rounded-xl border border-emerald-100">
+                <span class="text-gray-500 block text-xs">Tổng thí sinh</span>
+                <b class="text-lg text-emerald-900">${data.total}</b>
+            </div>
+            <div class="bg-white p-3 rounded-xl border border-emerald-100">
+                <span class="text-gray-500 block text-xs">Tổng phòng thi</span>
+                <b class="text-lg text-emerald-900">${data.roomCount}</b>
+            </div>
+            <div class="bg-white p-3 rounded-xl border border-emerald-100">
+                <span class="text-gray-500 block text-xs">Thời gian cập nhật</span>
+                <b class="text-sm text-emerald-900">${escapeHtml(data.time || '')}</b>
+            </div>
+        </div>`;
+}
+
+function autoAssign() {
+    showModal(
+        'Xác nhận tự động',
+        'Hệ thống sẽ tự động ghép tối đa 2 trường THCS vào mỗi điểm thi THPT theo khu vực và sức chứa phòng. Tiếp tục?',
+        true,
+        confirmed => {
+            if (!confirmed) return;
+
+            const thcs = INIT.schools
+                .filter(s => s.type === 'THCS')
+                .sort((a,b) =>
+                    a.ward.localeCompare(b.ward, 'vi') ||
+                    a.name.localeCompare(b.name, 'vi')
+                );
+            const venues = venueCandidates();
+
+            if (!thcs.length || !venues.length) {
+                showModal('Không thể tự động chia', 'Cần có trường THCS và trường THPT có phòng thi.');
+                return;
+            }
+
+            const usedVenues = new Set();
+            const groups = new Map();
+            const unplaced = [];
+
+            function place(schools) {
+                const studentCount = schools.reduce((sum, s) => sum + Number(s.students || 0), 0);
+                const wardId = Number(schools[0].wardId);
+                const candidates = venues
+                    .filter(v => !usedVenues.has(Number(v.id)) && Number(v.capacity) >= studentCount)
+                    .sort((a,b) =>
+                        (Number(a.wardId) === wardId ? 0 : 1) - (Number(b.wardId) === wardId ? 0 : 1) ||
+                        Number(a.capacity) - Number(b.capacity)
+                    );
+
+                if (!candidates.length) return false;
+                const venue = candidates[0];
+                usedVenues.add(Number(venue.id));
+                groups.set(Number(venue.id), schools.map(s => Number(s.id)));
+                return true;
+            }
+
+            for (let i = 0; i < thcs.length; i += MAX_PER_VENUE) {
+                const pair = thcs.slice(i, i + MAX_PER_VENUE);
+                if (!place(pair)) {
+                    pair.forEach(s => unplaced.push(s.name));
+                }
+            }
+
+            state.groups = groups;
+            invalidatePreview();
+
+            const message = unplaced.length
+                ? `Đã phân bổ ${thcs.length - unplaced.length}/${thcs.length} trường.\n\nChưa bố trí được:\n${unplaced.join('\n')}\n\nHãy thêm điểm thi hoặc kiểm tra sức chứa.`
+                : `Đã ghép ${thcs.length} trường THCS vào ${groups.size} điểm thi.`;
+            showModal('Kết quả tự động', message);
+        }
+    );
+}
+
+function cancelChanges() {
+    if (isDirty()) {
+        showModal('Xác nhận hủy', 'Bạn có chắc muốn bỏ các thay đổi chưa lưu?', true, confirmed => {
+            if (confirmed) window.location.reload();
+        });
+    } else {
+        window.location.reload();
+    }
+}
+
+window.addEventListener('beforeunload', event => {
+    if (isDirty()) {
+        event.preventDefault();
+        event.returnValue = '';
+    }
+});
+
+window.addEventListener('DOMContentLoaded', () => {
+    buildWardFilter();
+    renderAll();
+});
+</script>
 </body>
 </html>

@@ -178,8 +178,8 @@ $locationsJson = json_encode(
                                oninput="handleSearch()" onkeydown="if(event.key==='Enter'){event.preventDefault();handleSearch();}">
                         <span class="absolute left-3 top-3.5 text-gray-400">🔍</span>
                     </div>
-                    <button type="button" onclick="handleSearch()" class="bg-gray-900 text-white px-5 rounded-lg text-sm font-medium hover:bg-gray-800">Tìm kiếm</button>
-                    <button type="button" id="clear-btn" onclick="clearSearch()" class="hidden border bg-white text-gray-700 px-4 rounded-lg text-sm font-medium hover:bg-gray-100">Xóa</button>
+                    <button type="button" onclick="handleSearch()" class="bg-gray-900 text-white px-5 rounded-lg text-sm font-medium hover:bg-gray-800 whitespace-nowrap">🔍 Tìm kiếm</button>
+                    <button type="button" id="clear-btn" onclick="clearSearch()" class="hidden border bg-white text-gray-700 px-4 rounded-lg text-sm font-medium hover:bg-gray-100 whitespace-nowrap">✕ Xóa bộ lọc</button>
                 </div>
             </div>
             <div class="text-sm text-gray-500 self-end md:self-center" id="count-box">
@@ -189,13 +189,29 @@ $locationsJson = json_encode(
     </div>
 
     <!-- KHU VỰC HIỂN THỊ DANH SÁCH -->
-    <div class="border bg-white rounded-xl shadow-sm overflow-hidden">
+    <div id="list-card" class="border bg-white rounded-xl shadow-sm overflow-hidden">
         <div class="p-4 border-b bg-gray-50 font-bold text-sm text-gray-700">
             Danh sách các điểm thi chính thức <span class="font-normal text-gray-500">(Nhấn vào một điểm thi để xem chi tiết)</span>
         </div>
 
         <div id="location-container" class="p-6">
             <!-- JavaScript render danh sách -->
+        </div>
+
+        <!-- PHÂN TRANG -->
+        <div id="pagination-bar" class="hidden border-t bg-gray-50 px-6 py-4 flex flex-col md:flex-row items-center justify-between gap-3">
+            <div class="flex items-center gap-3 text-sm text-gray-600">
+                <span id="page-info"></span>
+                <label class="flex items-center gap-2">
+                    Mỗi trang
+                    <select id="page-size" onchange="changePageSize(this.value)" class="border rounded-lg px-2 py-1 bg-white text-sm outline-none focus:ring-2 focus:ring-gray-900">
+                        <option value="6">6</option>
+                        <option value="12">12</option>
+                        <option value="24">24</option>
+                    </select>
+                </label>
+            </div>
+            <div id="pagination" class="flex flex-wrap items-center gap-1"></div>
         </div>
     </div>
 
@@ -241,6 +257,9 @@ $locationsJson = json_encode(
     const examLocations = <?= $locationsJson ?>;
 
     let currentData = [...examLocations];
+    let currentKeyword = "";
+    let currentPage = 1;
+    let pageSize = 6;
 
     window.onload = function () {
         checkAndRenderInitialData();
@@ -285,18 +304,26 @@ $locationsJson = json_encode(
 
         // 5.1 Không có kết quả khớp -> báo "Không tìm thấy dữ liệu", quay lại bước 4
         if (data.length === 0) {
+            document.getElementById("pagination-bar").classList.add("hidden");
             container.innerHTML = `
                 <div class="rounded-xl border border-gray-200 bg-gray-50 p-8 text-center text-gray-500">
                     <p class="font-medium text-lg text-gray-700">Không tìm thấy dữ liệu</p>
                     <p class="text-sm mt-1">Không có điểm thi nào phù hợp với từ khóa bạn vừa nhập. Vui lòng thử lại.</p>
-                    <button type="button" onclick="clearSearch()" class="mt-4 border bg-white text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-100">Xóa tìm kiếm</button>
+                    <button type="button" onclick="clearSearch()" class="mt-4 border bg-white text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-100">✕ Xóa bộ lọc</button>
                 </div>
             `;
             return;
         }
 
+        // Phân trang: giữ trang hiện tại trong khoảng hợp lệ rồi cắt dữ liệu
+        const totalPages = Math.max(1, Math.ceil(data.length / pageSize));
+        if (currentPage > totalPages) currentPage = totalPages;
+        if (currentPage < 1) currentPage = 1;
+        const start = (currentPage - 1) * pageSize;
+        const pageData = data.slice(start, start + pageSize);
+
         let html = '<div class="grid grid-cols-1 md:grid-cols-2 gap-4">';
-        data.forEach(item => {
+        pageData.forEach(item => {
             html += `
                 <div onclick="viewDetail(${item.id})" class="border rounded-xl p-5 hover:shadow-md transition bg-white flex flex-col justify-between cursor-pointer hover:border-gray-400">
                     <div>
@@ -321,6 +348,66 @@ $locationsJson = json_encode(
         html += '</div>';
 
         container.innerHTML = html;
+        renderPagination(data.length, totalPages, start, pageData.length);
+    }
+
+    /* ===================== PHÂN TRANG ===================== */
+    // Danh sách số trang rút gọn: 1 … 4 5 6 … 20
+    function pageItems(cur, total) {
+        if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+        const set = new Set([1, total, cur - 1, cur, cur + 1]);
+        if (cur <= 3) [2, 3, 4].forEach(n => set.add(n));
+        if (cur >= total - 2) [total - 3, total - 2, total - 1].forEach(n => set.add(n));
+        const arr = [...set].filter(n => n >= 1 && n <= total).sort((a, b) => a - b);
+        const out = [];
+        arr.forEach((n, i) => {
+            if (i && n - arr[i - 1] > 1) out.push('…');
+            out.push(n);
+        });
+        return out;
+    }
+
+    function renderPagination(totalItems, totalPages, start, shown) {
+        const bar = document.getElementById("pagination-bar");
+        // Danh sách ngắn hơn cỡ trang nhỏ nhất thì không cần thanh phân trang
+        if (totalItems <= 6) { bar.classList.add("hidden"); return; }
+        bar.classList.remove("hidden");
+
+        document.getElementById("page-size").value = String(pageSize);
+        document.getElementById("page-info").textContent =
+            `Hiển thị ${start + 1}–${start + shown} / ${totalItems} điểm thi`;
+
+        const btn = "min-w-[2.25rem] px-3 py-1.5 rounded-lg border text-sm font-medium transition ";
+        const off = "bg-white text-gray-700 hover:bg-gray-100 ";
+        const on  = "bg-gray-900 text-white border-gray-900 ";
+        const dis = "bg-gray-100 text-gray-400 cursor-not-allowed ";
+
+        let h = `<button type="button" ${currentPage === 1 ? 'disabled' : ''} onclick="goToPage(${currentPage - 1})"
+                    class="${btn}${currentPage === 1 ? dis : off}">&larr; Trước</button>`;
+        pageItems(currentPage, totalPages).forEach(p => {
+            if (p === '…') {
+                h += `<span class="px-2 text-gray-400">…</span>`;
+            } else {
+                h += `<button type="button" onclick="goToPage(${p})" ${p === currentPage ? 'aria-current="page"' : ''}
+                        class="${btn}${p === currentPage ? on : off}">${p}</button>`;
+            }
+        });
+        h += `<button type="button" ${currentPage === totalPages ? 'disabled' : ''} onclick="goToPage(${currentPage + 1})"
+                    class="${btn}${currentPage === totalPages ? dis : off}">Sau &rarr;</button>`;
+
+        document.getElementById("pagination").innerHTML = h;
+    }
+
+    function goToPage(p) {
+        currentPage = p;
+        renderLocations(currentData, currentKeyword);
+        document.getElementById("list-card").scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    function changePageSize(v) {
+        pageSize = Number(v) || 6;
+        currentPage = 1;
+        renderLocations(currentData, currentKeyword);
     }
 
     // Mở modal xem chi tiết
@@ -369,6 +456,10 @@ $locationsJson = json_encode(
         const keyword = removeAccents(raw.trim());
         document.getElementById("clear-btn").classList.toggle("hidden", !keyword);
 
+        // Từ khóa đổi thì quay về trang 1
+        if (keyword !== currentKeyword) currentPage = 1;
+        currentKeyword = keyword;
+
         if (!keyword) {
             currentData = [...examLocations];
             renderLocations(currentData, "");
@@ -391,6 +482,7 @@ $locationsJson = json_encode(
     function clearSearch() {
         const input = document.getElementById("search-input");
         input.value = "";
+        currentPage = 1;
         handleSearch();
         input.focus();
     }
