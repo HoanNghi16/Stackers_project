@@ -24,6 +24,7 @@ function renderSidebar() {
             ['ten' => 'Thiết lập công thức tính điểm', 'url' => '/stackers_project/pages/so-gd/thiet-lap-cong-thuc-tinh-diem'],
             ['ten' => 'Xem danh sách thí sinh', 'url' => '/stackers_project/pages/so-gd/xem-danh-sach-thi-sinh'],
             ['ten' => 'Xét tuyển', 'url' => '/stackers_project/pages/so-gd/xet-tuyen'],
+            ['ten' => 'Quản lý tài khoản', 'url'=>'/stackers_project/pages/so-gd/quan-ly-tai-khoan']
         ],
     ];
 
