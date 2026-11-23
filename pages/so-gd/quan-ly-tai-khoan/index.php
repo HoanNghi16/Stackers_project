@@ -1,1253 +1,256 @@
 <?php
-$accounts = [
-    [
-        'id' => 1,
-        'name' => 'Nguyễn Văn An',
-        'phone' => '0901234567',
-        'email' => 'nguyenvanan@gmail.com',
-        'cccd' => '079201001234',
-        'role' => 'Sở GD&ĐT',
-        'dob' => '01/01/1985',
-        'address' => '123 Nguyễn Huệ',
-        'ward' => 'Phường 1',
-    ],
-    [
-        'id' => 2,
-        'name' => 'Trần Thị Bình',
-        'phone' => '0912345678',
-        'email' => 'tranthibinh@gmail.com',
-        'cccd' => '079201005678',
-        'role' => 'Trường THCS',
-        'dob' => '15/05/1988',
-        'address' => '45 Lê Lợi',
-        'ward' => 'Phường 2',
-    ],
-    [
-        'id' => 3,
-        'name' => 'Lê Văn Cường',
-        'phone' => '0923456789',
-        'email' => 'levancuong@gmail.com',
-        'cccd' => '079201009999',
-        'role' => 'Trường THPT',
-        'dob' => '20/08/1982',
-        'address' => '78 Trần Hưng Đạo',
-        'ward' => 'Phường 3',
-    ],
-    [
-        'id' => 4,
-        'name' => 'Phạm Minh Dũng',
-        'phone' => '0934567890',
-        'email' => '',
-        'cccd' => '079201001111',
-        'role' => 'Học sinh',
-        'dob' => '10/10/2008',
-        'address' => '25 Hoàng Văn Thụ',
-        'ward' => 'Phường 4',
-    ],
-];
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    session_start();
+}
+require_once __DIR__ . '/../../../index.php';
+require_once __DIR__ . '/../../../class/quan-ly-tai-khoan/Controller.php';
+require_once __DIR__ . '/../../../components/layout/header.php';
+require_once __DIR__ . '/../../../components/layout/sidebar.php';
 
+if (($env['DEV_FAKE_LOGIN'] ?? '') === '1' && empty($_SESSION['vaitro'])) {
+    $_SESSION['vaitro'] = 'SO_GD';
+}
+if (($_SESSION['vaitro'] ?? '') !== 'SO_GD') {
+    header('Location: /stackers_project/pages/login');
+    exit;
+}
+
+function eAccount($value): string
+{
+    return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
+}
+
+if (empty($_SESSION['csrf_quanlytaikhoan'])) {
+    $_SESSION['csrf_quanlytaikhoan'] = bin2hex(random_bytes(32));
+}
+$ctrl = new CtrlQuanLyTaiKhoan($conn);
 $roles = [
-    'Sở GD&ĐT',
-    'Trường THCS',
-    'Trường THPT',
-    'Học sinh'
+    'SO_GD' => 'Sở GD',
+    'THPT' => 'Trường THPT',
+    'THCS' => 'Trường THCS',
+    'HOC_SINH' => 'Học sinh',
 ];
-?>
+$page = max(1, (int)($_GET['page'] ?? 1));
+$accountId = max(0, (int)($_GET['mataikhoan'] ?? 0));
+$action = (string)($_GET['action'] ?? '');
+$searchName = trim((string)($_GET['q'] ?? ''));
+$filterRole = (string)($_GET['vaitro'] ?? '');
+$filterRole = array_key_exists($filterRole, $roles) ? $filterRole : '';
+$filterQuery = http_build_query(array_filter(['q' => $searchName, 'vaitro' => $filterRole], static fn($value) => $value !== ''));
+$filterSuffix = $filterQuery !== '' ? '&' . $filterQuery : '';
+$notice = $_SESSION['flash_quanlytaikhoan'] ?? '';
+unset($_SESSION['flash_quanlytaikhoan']);
+$error = '';
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    try {
+        if (!hash_equals($_SESSION['csrf_quanlytaikhoan'], (string)($_POST['csrf'] ?? ''))) {
+            throw new RuntimeException('Phiên làm việc hết hạn. Vui lòng tải lại trang.');
+        }
+        if (($_POST['hanhdong'] ?? '') === 'them') {
+            $newId = $ctrl->ThemTaiKhoan($_POST);
+            $_SESSION['flash_quanlytaikhoan'] = 'Thêm tài khoản thành công. Mật khẩu mặc định: 1.';
+            header('Location: ?mataikhoan=' . $newId);
+            exit;
+        }
+        if (($_POST['hanhdong'] ?? '') === 'sua') {
+            $id = (int)($_POST['mataikhoan'] ?? 0);
+            $ctrl->CapNhatTaiKhoan($id, $_POST);
+            $_SESSION['flash_quanlytaikhoan'] = 'Cập nhật thông tin tài khoản thành công.';
+            header('Location: ?mataikhoan=' . $id);
+            exit;
+        }
+        throw new RuntimeException('Thao tác không hợp lệ.');
+    } catch (Throwable $exception) {
+        $error = !($exception instanceof mysqli_sql_exception) && ($exception instanceof InvalidArgumentException || $exception instanceof RuntimeException)
+            ? $exception->getMessage()
+            : 'Không thể lưu tài khoản. Hãy kiểm tra dữ liệu trùng lặp và cập nhật schema cơ sở dữ liệu theo migration.';
+        $action = ($_POST['hanhdong'] ?? '') === 'sua' ? 'edit' : 'add';
+        $accountId = (int)($_POST['mataikhoan'] ?? 0);
+    }
+}
+
+$account = $accountId > 0 ? $ctrl->ChiTietTaiKhoan($accountId) : null;
+if ($accountId > 0 && !$account && $action !== 'add') {
+    $error = 'Không tìm thấy tài khoản.';
+    $accountId = 0;
+    $action = '';
+}
+$isForm = in_array($action, ['add', 'edit'], true);
+$formAccount = $action === 'edit' && $account ? $account : [];
+$totalAccounts = $ctrl->TongSoTaiKhoan($searchName, $filterRole);
+$totalPages = max(1, (int)ceil($totalAccounts / 10));
+$page = min($page, $totalPages);
+$accounts = $ctrl->DanhSachTaiKhoan($page, $searchName, $filterRole);
+$wards = $ctrl->DanhSachPhuong();
+$schoolsTHCS = $ctrl->DanhSachTruongTHCS();
+$schoolsTHPT = $ctrl->DanhSachTruongTHPT();
+$formValues = $_SERVER['REQUEST_METHOD'] === 'POST' ? $_POST : $formAccount;
+
+?>
 <!DOCTYPE html>
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
     <title>Quản lý tài khoản</title>
-
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
+<body class="min-h-screen bg-slate-50">
+<?php renderHeader(); renderSidebar(); ?>
+<main class="ml-72 px-6 pb-12 pt-24">
+    <div class="mx-auto max-w-7xl">
+        <section class="mb-8 rounded-3xl bg-gradient-to-br from-blue-700 to-indigo-700 px-8 py-9 text-white shadow-xl">
+            <p class="text-sm font-semibold uppercase tracking-widest text-blue-200">Quản trị hệ thống</p>
+            <h1 class="mt-3 text-3xl font-extrabold">Quản lý tài khoản</h1>
+            <p class="mt-3 text-blue-100">Danh sách, hồ sơ và vai trò người dùng trong hệ thống tuyển sinh.</p>
+        </section>
 
-<body class="bg-gray-100 min-h-screen">
+        <?php if ($notice !== ''): ?><div class="mb-5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800" role="status"><?= eAccount($notice) ?></div><?php endif; ?>
+        <?php if ($error !== ''): ?><div class="mb-5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700" role="alert"><?= eAccount($error) ?></div><?php endif; ?>
 
-<div class="max-w-7xl mx-auto p-6">
-
-    <!-- HEADER -->
-    <div class="mb-6">
-        <h1 class="text-2xl font-bold text-gray-800">
-            Quản lý tài khoản
-        </h1>
-
-        <p class="text-gray-500 mt-1">
-            Quản lý thông tin tài khoản người dùng trong hệ thống
-        </p>
-    </div>
-
-
-    <!-- ========================= -->
-    <!-- DANH SÁCH TÀI KHOẢN -->
-    <!-- ========================= -->
-
-    <div id="account-list-section"
-         class="bg-white rounded-xl shadow-sm border border-gray-200">
-
-        <!-- TOOLBAR -->
-        <div class="p-5 border-b border-gray-200">
-
-            <div class="flex flex-col md:flex-row gap-3 justify-between">
-
-                <div class="flex flex-col sm:flex-row gap-3 flex-1">
-
-                    <input
-                        id="search-input"
-                        type="text"
-                        placeholder="Tìm theo họ tên, SĐT, CCCD..."
-                        class="border border-gray-300 rounded-lg px-4 py-2.5
-                               focus:outline-none focus:ring-2 focus:ring-blue-500
-                               w-full sm:max-w-md"
-                        oninput="searchAccounts()"
-                    >
-
-                    <select
-                        id="role-filter"
-                        onchange="searchAccounts()"
-                        class="border border-gray-300 rounded-lg px-4 py-2.5
-                               focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                        <option value="">Tất cả vai trò</option>
-
-                        <?php foreach ($roles as $role): ?>
-                            <option value="<?= htmlspecialchars($role) ?>">
-                                <?= htmlspecialchars($role) ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-
-                </div>
-
-                <button
-                    onclick="showAddForm()"
-                    class="bg-blue-600 hover:bg-blue-700 text-white
-                           px-5 py-2.5 rounded-lg font-medium"
-                >
-                    + Thêm tài khoản
-                </button>
-
+        <?php if ($isForm): ?>
+            <?php $isEdit = $action === 'edit'; ?>
+            <div class="mb-6 flex items-end justify-between gap-4">
+                <div><p class="text-sm font-semibold uppercase tracking-wider text-blue-600">Thông tin người dùng</p><h2 class="mt-1 text-2xl font-bold text-slate-800"><?= $isEdit ? 'Chỉnh sửa tài khoản' : 'Thêm tài khoản' ?></h2></div>
+                <a href="<?= $isEdit ? '?mataikhoan=' . (int)$accountId : '?page=' . $page ?>" class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600">Quay lại</a>
             </div>
-        </div>
-
-
-        <!-- EMPTY STATE -->
-        <div id="empty-state"
-             class="hidden p-12 text-center">
-
-            <div class="text-5xl mb-4">
-                📭
-            </div>
-
-            <h2 class="text-lg font-semibold text-gray-700">
-                Chưa có tài khoản người dùng
-            </h2>
-
-            <p class="text-gray-500 mt-2">
-                Hệ thống chưa tìm thấy tài khoản phù hợp.
-            </p>
-
-        </div>
-
-
-        <!-- TABLE -->
-        <div id="account-table-wrapper"
-             class="overflow-x-auto">
-
-            <table class="w-full">
-
-                <thead class="bg-gray-50 border-b border-gray-200">
-
-                    <tr class="text-left text-sm text-gray-600">
-
-                        <th class="px-5 py-3">
-                            Họ và tên
-                        </th>
-
-                        <th class="px-5 py-3">
-                            Số điện thoại
-                        </th>
-
-                        <th class="px-5 py-3">
-                            Email
-                        </th>
-
-                        <th class="px-5 py-3">
-                            Vai trò
-                        </th>
-
-                        <th class="px-5 py-3">
-                            CCCD
-                        </th>
-
-                        <th class="px-5 py-3 text-center">
-                            Thao tác
-                        </th>
-
-                    </tr>
-
-                </thead>
-
-                <tbody id="account-table-body"
-                       class="divide-y divide-gray-100">
-
-                    <?php foreach ($accounts as $account): ?>
-
-                        <tr
-                            class="account-row hover:bg-gray-50"
-                            data-id="<?= $account['id'] ?>"
-                            data-name="<?= htmlspecialchars(strtolower($account['name'])) ?>"
-                            data-phone="<?= htmlspecialchars($account['phone']) ?>"
-                            data-cccd="<?= htmlspecialchars($account['cccd']) ?>"
-                            data-role="<?= htmlspecialchars($account['role']) ?>"
-                        >
-
-                            <td class="px-5 py-4 font-medium text-gray-800">
-                                <?= htmlspecialchars($account['name']) ?>
-                            </td>
-
-                            <td class="px-5 py-4 text-gray-600">
-                                <?= htmlspecialchars($account['phone']) ?>
-                            </td>
-
-                            <td class="px-5 py-4 text-gray-600">
-                                <?= $account['email']
-                                    ? htmlspecialchars($account['email'])
-                                    : '<span class="text-gray-400">Không có</span>' ?>
-                            </td>
-
-                            <td class="px-5 py-4">
-
-                                <span class="inline-flex px-3 py-1
-                                             rounded-full bg-blue-50
-                                             text-blue-700 text-sm">
-
-                                    <?= htmlspecialchars($account['role']) ?>
-
-                                </span>
-
-                            </td>
-
-                            <td class="px-5 py-4 text-gray-600">
-                                <?= htmlspecialchars($account['cccd']) ?>
-                            </td>
-
-                            <td class="px-5 py-4 text-center">
-
-                                <button
-                                    onclick="viewAccount(<?= $account['id'] ?>)"
-                                    class="text-blue-600 hover:text-blue-800
-                                           font-medium"
-                                >
-                                    Xem
-                                </button>
-
-                            </td>
-
-                        </tr>
-
+            <form method="post" class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm md:p-8">
+                <input type="hidden" name="csrf" value="<?= eAccount($_SESSION['csrf_quanlytaikhoan']) ?>">
+                <input type="hidden" name="hanhdong" value="<?= $isEdit ? 'sua' : 'them' ?>">
+                <?php if ($isEdit): ?><input type="hidden" name="mataikhoan" value="<?= (int)$accountId ?>"><?php endif; ?>
+                <?php if (!$isEdit): ?>
+                    <div class="mb-5 rounded-xl bg-blue-50 p-4 text-sm text-blue-800">Mật khẩu mặc định của tài khoản mới là <strong>1</strong>.</div>
+                <?php else: ?>
+                    <div class="mb-5 rounded-xl bg-slate-50 p-4 text-sm text-slate-600">Vai trò và trường liên kết không thay đổi khi chỉnh sửa thông tin cơ bản.</div>
+                <?php endif; ?>
+                <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <?php
+                    $fields = [
+                        ['ho', 'Họ', 'text', true], ['ten', 'Tên', 'text', true],
+                        ['sodienthoai', 'Số điện thoại', 'tel', true], ['email', 'Email', 'email', true],
+                        ['socccd', 'Số CCCD', 'text', true], ['ngaysinh', 'Ngày sinh', 'date', true],
+                        ['diachi', 'Địa chỉ', 'text', true],
+                    ];
+                    foreach ($fields as [$field, $label, $type, $required]):
+                        $value = $formValues[$field] ?? '';
+                    ?>
+                        <div>
+                            <label for="<?= eAccount($field) ?>" class="mb-1.5 block text-sm font-medium text-slate-700"><?= eAccount($label) ?><?= $required ? ' <span class="text-rose-500">*</span>' : '' ?></label>
+                            <input id="<?= eAccount($field) ?>" name="<?= eAccount($field) ?>" type="<?= eAccount($type) ?>" value="<?= eAccount($value) ?>" <?= $required ? 'required' : '' ?> <?= $field === 'socccd' ? 'maxlength="12" pattern="[0-9]{12}"' : '' ?> class="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-100">
+                        </div>
                     <?php endforeach; ?>
-
-                </tbody>
-
-            </table>
-
-        </div>
-
-    </div>
-
-
-    <!-- ========================= -->
-    <!-- CHI TIẾT TÀI KHOẢN -->
-    <!-- ========================= -->
-
-    <div id="account-detail-section"
-         class="hidden">
-
-        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
-
-            <!-- HEADER -->
-            <div class="p-5 border-b border-gray-200
-                        flex justify-between items-center">
-
-                <div>
-
-                    <h2 class="text-xl font-semibold text-gray-800">
-                        Chi tiết tài khoản
-                    </h2>
-
-                    <p class="text-gray-500 mt-1">
-                        Thông tin tài khoản người dùng
-                    </p>
-
-                </div>
-
-                <button
-                    onclick="backToList()"
-                    class="text-gray-600 hover:text-gray-900"
-                >
-                    ← Quay lại
-                </button>
-
-            </div>
-
-
-            <!-- DETAIL -->
-            <div class="p-6">
-
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-
                     <div>
-                        <label class="text-sm text-gray-500">
-                            Họ và tên
-                        </label>
-
-                        <p id="detail-name"
-                           class="font-medium text-gray-800 mt-1">
-                        </p>
-                    </div>
-
-
-                    <div>
-                        <label class="text-sm text-gray-500">
-                            Số điện thoại
-                        </label>
-
-                        <p id="detail-phone"
-                           class="font-medium text-gray-800 mt-1">
-                        </p>
-                    </div>
-
-
-                    <div>
-                        <label class="text-sm text-gray-500">
-                            Email
-                        </label>
-
-                        <p id="detail-email"
-                           class="font-medium text-gray-800 mt-1">
-                        </p>
-                    </div>
-
-
-                    <div>
-                        <label class="text-sm text-gray-500">
-                            Số CCCD
-                        </label>
-
-                        <p id="detail-cccd"
-                           class="font-medium text-gray-800 mt-1">
-                        </p>
-                    </div>
-
-
-                    <div>
-                        <label class="text-sm text-gray-500">
-                            Vai trò
-                        </label>
-
-                        <p id="detail-role"
-                           class="font-medium text-gray-800 mt-1">
-                        </p>
-                    </div>
-
-
-                    <div>
-                        <label class="text-sm text-gray-500">
-                            Ngày sinh
-                        </label>
-
-                        <p id="detail-dob"
-                           class="font-medium text-gray-800 mt-1">
-                        </p>
-                    </div>
-
-
-                    <div>
-                        <label class="text-sm text-gray-500">
-                            Địa chỉ
-                        </label>
-
-                        <p id="detail-address"
-                           class="font-medium text-gray-800 mt-1">
-                        </p>
-                    </div>
-
-
-                    <div>
-                        <label class="text-sm text-gray-500">
-                            Phường
-                        </label>
-
-                        <p id="detail-ward"
-                           class="font-medium text-gray-800 mt-1">
-                        </p>
-                    </div>
-
-                </div>
-
-
-                <!-- ACTION -->
-                <div class="mt-8 pt-5 border-t border-gray-200">
-
-                    <button
-                        onclick="showEditForm()"
-                        class="bg-blue-600 hover:bg-blue-700
-                               text-white px-5 py-2.5 rounded-lg
-                               font-medium"
-                    >
-                        Chỉnh sửa
-                    </button>
-
-                </div>
-
-            </div>
-
-        </div>
-
-    </div>
-
-
-    <!-- ========================= -->
-    <!-- FORM THÊM / CHỈNH SỬA -->
-    <!-- ========================= -->
-
-    <div id="account-form-section"
-         class="hidden">
-
-        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
-
-            <!-- HEADER -->
-            <div class="p-5 border-b border-gray-200
-                        flex justify-between items-center">
-
-                <div>
-
-                    <h2 id="form-title"
-                        class="text-xl font-semibold text-gray-800">
-                        Chỉnh sửa tài khoản
-                    </h2>
-
-                    <p class="text-gray-500 mt-1">
-                        Nhập thông tin tài khoản
-                    </p>
-
-                </div>
-
-                <button
-                    onclick="cancelForm()"
-                    class="text-gray-600 hover:text-gray-900"
-                >
-                    ← Quay lại
-                </button>
-
-            </div>
-
-
-            <!-- FORM -->
-            <form id="account-form"
-                  class="p-6"
-                  onsubmit="saveAccount(event)">
-
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-
-
-                    <!-- HỌ TÊN -->
-                    <div>
-
-                        <label class="block text-sm font-medium
-                                      text-gray-700 mb-1">
-
-                            Họ và tên
-                            <span class="text-red-500">*</span>
-
-                        </label>
-
-                        <input
-                            id="name"
-                            type="text"
-                            class="w-full border border-gray-300
-                                   rounded-lg px-4 py-2.5
-                                   focus:outline-none
-                                   focus:ring-2 focus:ring-blue-500"
-                            required
-                        >
-
-                    </div>
-
-
-                    <!-- SĐT -->
-                    <div>
-
-                        <label class="block text-sm font-medium
-                                      text-gray-700 mb-1">
-
-                            Số điện thoại
-                            <span class="text-red-500">*</span>
-
-                        </label>
-
-                        <input
-                            id="phone"
-                            type="tel"
-                            class="w-full border border-gray-300
-                                   rounded-lg px-4 py-2.5
-                                   focus:outline-none
-                                   focus:ring-2 focus:ring-blue-500"
-                            required
-                        >
-
-                    </div>
-
-
-                    <!-- EMAIL -->
-                    <div>
-
-                        <label class="block text-sm font-medium
-                                      text-gray-700 mb-1">
-
-                            Email
-
-                        </label>
-
-                        <input
-                            id="email"
-                            type="email"
-                            class="w-full border border-gray-300
-                                   rounded-lg px-4 py-2.5
-                                   focus:outline-none
-                                   focus:ring-2 focus:ring-blue-500"
-                        >
-
-                    </div>
-
-
-                    <!-- CCCD -->
-                    <div>
-
-                        <label class="block text-sm font-medium
-                                      text-gray-700 mb-1">
-
-                            Số CCCD
-                            <span class="text-red-500">*</span>
-
-                        </label>
-
-                        <input
-                            id="cccd"
-                            type="text"
-                            maxlength="12"
-                            class="w-full border border-gray-300
-                                   rounded-lg px-4 py-2.5
-                                   focus:outline-none
-                                   focus:ring-2 focus:ring-blue-500"
-                            required
-                        >
-
-                    </div>
-
-
-                    <!-- VAI TRÒ -->
-                    <div>
-
-                        <label class="block text-sm font-medium
-                                      text-gray-700 mb-1">
-
-                            Vai trò
-                            <span class="text-red-500">*</span>
-
-                        </label>
-
-                        <select
-                            id="role"
-                            class="w-full border border-gray-300
-                                   rounded-lg px-4 py-2.5
-                                   focus:outline-none
-                                   focus:ring-2 focus:ring-blue-500"
-                            required
-                        >
-
-                            <option value="">
-                                -- Chọn vai trò --
-                            </option>
-
-                            <?php foreach ($roles as $role): ?>
-
-                                <option value="<?= htmlspecialchars($role) ?>">
-                                    <?= htmlspecialchars($role) ?>
-                                </option>
-
-                            <?php endforeach; ?>
-
+                        <label for="maphuong" class="mb-1.5 block text-sm font-medium text-slate-700">Phường <span class="text-rose-500">*</span></label>
+                        <select id="maphuong" name="maphuong" required class="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm">
+                            <option value="">Chọn phường</option>
+                            <?php foreach ($wards as $ward): ?><option value="<?= (int)$ward['maphuong'] ?>" <?= (string)($formValues['maphuong'] ?? '') === (string)$ward['maphuong'] ? 'selected' : '' ?>><?= eAccount($ward['tenphuong']) ?></option><?php endforeach; ?>
                         </select>
-
                     </div>
-
-
-                    <!-- NGÀY SINH -->
-                    <div>
-
-                        <label class="block text-sm font-medium
-                                      text-gray-700 mb-1">
-
-                            Ngày sinh
-                            <span class="text-red-500">*</span>
-
-                        </label>
-
-                        <input
-                            id="dob"
-                            type="date"
-                            class="w-full border border-gray-300
-                                   rounded-lg px-4 py-2.5
-                                   focus:outline-none
-                                   focus:ring-2 focus:ring-blue-500"
-                            required
-                        >
-
-                    </div>
-
-
-                    <!-- ĐỊA CHỈ -->
-                    <div>
-
-                        <label class="block text-sm font-medium
-                                      text-gray-700 mb-1">
-
-                            Địa chỉ
-                            <span class="text-red-500">*</span>
-
-                        </label>
-
-                        <input
-                            id="address"
-                            type="text"
-                            class="w-full border border-gray-300
-                                   rounded-lg px-4 py-2.5
-                                   focus:outline-none
-                                   focus:ring-2 focus:ring-blue-500"
-                            required
-                        >
-
-                    </div>
-
-
-                    <!-- PHƯỜNG -->
-                    <div>
-
-                        <label class="block text-sm font-medium
-                                      text-gray-700 mb-1">
-
-                            Phường
-                            <span class="text-red-500">*</span>
-
-                        </label>
-
-                        <input
-                            id="ward"
-                            type="text"
-                            class="w-full border border-gray-300
-                                   rounded-lg px-4 py-2.5
-                                   focus:outline-none
-                                   focus:ring-2 focus:ring-blue-500"
-                            required
-                        >
-
-                    </div>
-
+                    <?php if (!$isEdit): ?>
+                        <div>
+                            <label for="vaitro" class="mb-1.5 block text-sm font-medium text-slate-700">Vai trò <span class="text-rose-500">*</span></label>
+                            <select id="vaitro" name="vaitro" required onchange="updateSchoolOptions()" class="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm">
+                                <option value="">Chọn vai trò</option>
+                                <?php foreach ($roles as $role => $label): ?><option value="<?= eAccount($role) ?>" <?= ($formValues['vaitro'] ?? '') === $role ? 'selected' : '' ?>><?= eAccount($label) ?></option><?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div id="school-field" class="hidden">
+                            <label for="matruong" class="mb-1.5 block text-sm font-medium text-slate-700">Trường học <span class="text-rose-500">*</span></label>
+                            <select id="matruong" name="matruong" class="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm">
+                                <option value="">Chọn trường</option>
+                                <?php foreach ($schoolsTHCS as $school): ?><option data-role="HOC_SINH,THCS" data-kind="THCS" value="<?= (int)$school['matruong'] ?>" <?= (string)($formValues['matruong'] ?? '') === (string)$school['matruong'] ? 'selected' : '' ?>><?= eAccount($school['tentruong']) ?> (THCS)</option><?php endforeach; ?>
+                                <?php foreach ($schoolsTHPT as $school): ?><option data-role="THPT" data-kind="THPT" value="<?= (int)$school['matruong'] ?>" <?= (string)($formValues['matruong'] ?? '') === (string)$school['matruong'] ? 'selected' : '' ?>><?= eAccount($school['tentruong']) ?> (THPT)</option><?php endforeach; ?>
+                            </select>
+                        </div>
+                    <?php else: ?>
+                        <div>
+                            <label class="mb-1.5 block text-sm font-medium text-slate-700">Vai trò</label>
+                            <div class="rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-600"><?= eAccount($roles[$account['vaitro']] ?? $account['vaitro']) ?></div>
+                        </div>
+                    <?php endif; ?>
                 </div>
-
-
-                <!-- ERROR -->
-                <div id="form-error"
-                     class="hidden mt-5 p-4 rounded-lg
-                            bg-red-50 border border-red-200
-                            text-red-700">
-
-                    Lưu thất bại. Vui lòng kiểm tra lại thông tin.
-
+                <div class="mt-8 flex gap-3 border-t border-slate-100 pt-5">
+                    <button class="rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-blue-700" type="submit">Lưu tài khoản</button>
+                    <a href="<?= $isEdit ? '?mataikhoan=' . (int)$accountId : '?page=' . $page ?>" class="rounded-xl border border-slate-200 px-6 py-2.5 text-sm font-semibold text-slate-600">Hủy</a>
                 </div>
-
-
-                <!-- BUTTON -->
-                <div class="mt-8 pt-5 border-t border-gray-200
-                            flex gap-3">
-
-                    <button
-                        type="submit"
-                        class="bg-blue-600 hover:bg-blue-700
-                               text-white px-6 py-2.5
-                               rounded-lg font-medium"
-                    >
-                        Lưu
-                    </button>
-
-                    <button
-                        type="button"
-                        onclick="cancelForm()"
-                        class="border border-gray-300
-                               hover:bg-gray-50
-                               px-6 py-2.5 rounded-lg"
-                    >
-                        Hủy
-                    </button>
-
-                </div>
-
             </form>
-
-        </div>
-
-    </div>
-
-
-    <!-- ========================= -->
-    <!-- LỊCH SỬ THAY ĐỔI -->
-    <!-- ========================= -->
-
-    <div id="history-section"
-         class="hidden mt-6">
-
-        <div class="bg-white rounded-xl shadow-sm
-                    border border-gray-200">
-
-            <div class="p-5 border-b border-gray-200">
-
-                <h2 class="font-semibold text-gray-800">
-                    Lịch sử thao tác
-                </h2>
-
+            <script>
+            function updateSchoolOptions() {
+                const role = document.getElementById('vaitro').value;
+                const field = document.getElementById('school-field');
+                const select = document.getElementById('matruong');
+                const needsSchool = ['HOC_SINH', 'THCS', 'THPT'].includes(role);
+                field.classList.toggle('hidden', !needsSchool);
+                select.required = needsSchool;
+                [...select.options].forEach(option => {
+                    if (!option.value) return;
+                    option.hidden = !option.dataset.role.split(',').includes(role);
+                    if (option.hidden && option.selected) select.value = '';
+                });
+            }
+            updateSchoolOptions();
+            </script>
+        <?php elseif ($account): ?>
+            <div class="mb-6 flex items-end justify-between gap-4">
+                <div><p class="text-sm font-semibold uppercase tracking-wider text-blue-600">Hồ sơ người dùng · #<?= (int)$account['manguoidung'] ?></p><h2 class="mt-1 text-2xl font-bold text-slate-800">Chi tiết tài khoản</h2></div>
+                <a href="?page=<?= $page ?>" class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600">Quay lại danh sách</a>
             </div>
-
-            <div class="p-5">
-
-                <div class="border-l-2 border-blue-500 pl-4">
-
-                    <p class="font-medium text-gray-800">
-                        Cập nhật thông tin tài khoản
-                    </p>
-
-                    <p class="text-sm text-gray-500 mt-1">
-                        Nhân viên Sở GD&ĐT
-                        · Vừa xong
-                    </p>
-
+            <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm md:p-8">
+                <div class="mb-6 border-b border-slate-100 pb-5"><h3 class="text-xl font-bold text-slate-800"><?= eAccount(trim($account['ho'] . ' ' . $account['ten'])) ?></h3><span class="mt-2 inline-flex rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700"><?= eAccount($roles[$account['vaitro']] ?? $account['vaitro']) ?></span></div>
+                <dl class="grid grid-cols-1 gap-5 md:grid-cols-2">
+                    <?php foreach ([
+                        'sodienthoai' => 'Số điện thoại', 'email' => 'Email', 'socccd' => 'Số CCCD',
+                        'ngaysinh' => 'Ngày sinh', 'diachi' => 'Địa chỉ', 'tenphuong' => 'Phường', 'tentruong' => 'Trường',
+                    ] as $field => $label): ?>
+                        <div><dt class="text-sm font-medium text-slate-500"><?= eAccount($label) ?></dt><dd class="mt-1 font-semibold text-slate-800"><?= eAccount($account[$field] ?: 'Chưa cập nhật') ?></dd></div>
+                    <?php endforeach; ?>
+                </dl>
+                <div class="mt-8 border-t border-slate-100 pt-5"><a href="?mataikhoan=<?= (int)$accountId ?>&action=edit" class="inline-flex rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700">Chỉnh sửa thông tin cơ bản</a></div>
+            </div>
+        <?php else: ?>
+            <div class="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+                <div><h2 class="text-xl font-bold text-slate-800">Danh sách tài khoản</h2><p class="mt-1 text-sm text-slate-500">Tổng cộng <?= $totalAccounts ?> tài khoản</p></div>
+                <a href="?action=add" class="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700">+ Thêm tài khoản</a>
+            </div>
+            <form method="get" class="mb-5 grid grid-cols-1 gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:grid-cols-[minmax(0,1fr)_240px_auto_auto] sm:items-end">
+                <div>
+                    <label for="search-name" class="mb-1.5 block text-sm font-medium text-slate-700">Tìm theo tên người dùng</label>
+                    <input id="search-name" name="q" type="search" value="<?= eAccount($searchName) ?>" placeholder="Nhập họ hoặc tên..." class="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none placeholder:text-slate-400 focus:border-blue-400 focus:ring-4 focus:ring-blue-100">
                 </div>
-
+                <div>
+                    <label for="filter-role" class="mb-1.5 block text-sm font-medium text-slate-700">Vai trò</label>
+                    <select id="filter-role" name="vaitro" class="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-100">
+                        <option value="">Tất cả vai trò</option>
+                        <?php foreach ($roles as $roleValue => $roleLabel): ?><option value="<?= eAccount($roleValue) ?>" <?= $filterRole === $roleValue ? 'selected' : '' ?>><?= eAccount($roleLabel) ?></option><?php endforeach; ?>
+                    </select>
+                </div>
+                <button type="submit" class="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700">Tìm kiếm</button>
+                <a href="?" class="rounded-xl border border-slate-200 px-5 py-2.5 text-center text-sm font-semibold text-slate-600 hover:bg-slate-50">Xóa lọc</a>
+            </form>
+            <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <div class="max-h-[60vh] overflow-auto">
+                    <table class="w-full min-w-[850px] text-left text-sm">
+                        <thead class="sticky top-0 z-10 bg-slate-50 text-xs font-semibold uppercase tracking-wider text-slate-500"><tr><th class="px-5 py-4">Họ và tên</th><th class="px-5 py-4">Số điện thoại</th><th class="px-5 py-4">Email</th><th class="px-5 py-4">Vai trò</th><th class="px-5 py-4">Trường</th><th class="px-5 py-4">CCCD</th><th class="px-5 py-4 text-right">Thao tác</th></tr></thead>
+                        <tbody class="divide-y divide-slate-100 text-slate-600">
+                        <?php if (!$accounts): ?><tr><td colspan="7" class="px-5 py-12 text-center text-slate-500">Chưa có tài khoản trong danh sách.</td></tr><?php endif; ?>
+                        <?php foreach ($accounts as $item): ?>
+                            <tr class="hover:bg-slate-50"><td class="px-5 py-4"><div class="font-semibold text-slate-800"><?= eAccount($item['ten']) ?></div><div class="mt-1 text-xs text-slate-400">Mã người dùng #<?= (int)$item['manguoidung'] ?></div></td><td class="px-5 py-4"><?= eAccount($item['sodienthoai'] ?: '—') ?></td><td class="px-5 py-4"><?= eAccount($item['email'] ?: '—') ?></td><td class="px-5 py-4"><?= eAccount($roles[$item['vaitro']] ?? $item['vaitro']) ?></td><td class="px-5 py-4"><?= eAccount($item['tentruong'] ?: '—') ?></td><td class="px-5 py-4"><?= eAccount($item['socccd'] ?: '—') ?></td><td class="px-5 py-4 text-right"><a class="font-semibold text-blue-700 hover:underline" href="?mataikhoan=<?= (int)$item['manguoidung'] ?>&page=<?= $page ?><?= eAccount($filterSuffix) ?>">Xem chi tiết</a></td></tr>
+                        <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="flex flex-col gap-3 border-t border-slate-100 px-5 py-4 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+                    <span>Trang <?= $page ?> / <?= $totalPages ?></span>
+                    <nav class="flex items-center gap-2" aria-label="Phân trang">
+                        <?php if ($page > 1): ?><a class="rounded-lg border border-slate-200 px-3 py-1.5 hover:bg-slate-50" href="?page=<?= $page - 1 ?><?= eAccount($filterSuffix) ?>">Trước</a><?php endif; ?>
+                        <?php for ($p = max(1, $page - 2); $p <= min($totalPages, $page + 2); $p++): ?><a class="rounded-lg px-3 py-1.5 <?= $p === $page ? 'bg-blue-600 text-white' : 'border border-slate-200 hover:bg-slate-50' ?>" href="?page=<?= $p ?><?= eAccount($filterSuffix) ?>" aria-current="<?= $p === $page ? 'page' : 'false' ?>"><?= $p ?></a><?php endfor; ?>
+                        <?php if ($page < $totalPages): ?><a class="rounded-lg border border-slate-200 px-3 py-1.5 hover:bg-slate-50" href="?page=<?= $page + 1 ?><?= eAccount($filterSuffix) ?>">Tiếp</a><?php endif; ?>
+                    </nav>
+                </div>
             </div>
-
-        </div>
-
+        <?php endif; ?>
     </div>
-
-
-    <!-- ========================= -->
-    <!-- SUCCESS MESSAGE -->
-    <!-- ========================= -->
-
-    <div id="success-message"
-         class="hidden fixed top-6 right-6
-                bg-green-600 text-white
-                px-5 py-4 rounded-lg shadow-lg">
-
-        <div class="font-semibold">
-            Thành công
-        </div>
-
-        <div id="success-text"
-             class="text-sm mt-1">
-            Cập nhật tài khoản thành công.
-        </div>
-
-    </div>
-
-</div>
-
-
-<script>
-
-const accounts = <?= json_encode($accounts, JSON_UNESCAPED_UNICODE) ?>;
-
-let selectedAccount = null;
-let editingAccountId = null;
-let isAdding = false;
-
-
-/* =========================
-   TÌM KIẾM TÀI KHOẢN
-========================= */
-
-function searchAccounts() {
-
-    const keyword =
-        document
-            .getElementById('search-input')
-            .value
-            .toLowerCase()
-            .trim();
-
-    const role =
-        document
-            .getElementById('role-filter')
-            .value;
-
-    const rows =
-        document.querySelectorAll('.account-row');
-
-    let visibleCount = 0;
-
-    rows.forEach(row => {
-
-        const name = row.dataset.name;
-        const phone = row.dataset.phone;
-        const cccd = row.dataset.cccd;
-        const rowRole = row.dataset.role;
-
-        const matchKeyword =
-            !keyword ||
-            name.includes(keyword) ||
-            phone.includes(keyword) ||
-            cccd.includes(keyword);
-
-        const matchRole =
-            !role || rowRole === role;
-
-        if (matchKeyword && matchRole) {
-
-            row.classList.remove('hidden');
-
-            visibleCount++;
-
-        } else {
-
-            row.classList.add('hidden');
-
-        }
-
-    });
-
-
-    const emptyState =
-        document.getElementById('empty-state');
-
-    const table =
-        document.getElementById('account-table-wrapper');
-
-
-    if (visibleCount === 0) {
-
-        emptyState.classList.remove('hidden');
-        table.classList.add('hidden');
-
-    } else {
-
-        emptyState.classList.add('hidden');
-        table.classList.remove('hidden');
-
-    }
-}
-
-
-/* =========================
-   XEM CHI TIẾT
-========================= */
-
-function viewAccount(id) {
-
-    const account =
-        accounts.find(item => item.id === id);
-
-    if (!account) {
-
-        alert('Không tìm thấy tài khoản');
-
-        return;
-
-    }
-
-    selectedAccount = account;
-
-    document.getElementById('detail-name').textContent =
-        account.name;
-
-    document.getElementById('detail-phone').textContent =
-        account.phone;
-
-    document.getElementById('detail-email').textContent =
-        account.email || 'Không có';
-
-    document.getElementById('detail-cccd').textContent =
-        account.cccd;
-
-    document.getElementById('detail-role').textContent =
-        account.role;
-
-    document.getElementById('detail-dob').textContent =
-        account.dob;
-
-    document.getElementById('detail-address').textContent =
-        account.address;
-
-    document.getElementById('detail-ward').textContent =
-        account.ward;
-
-
-    document
-        .getElementById('account-list-section')
-        .classList.add('hidden');
-
-    document
-        .getElementById('account-detail-section')
-        .classList.remove('hidden');
-
-    document
-        .getElementById('history-section')
-        .classList.remove('hidden');
-}
-
-
-/* =========================
-   HIỂN THỊ FORM CHỈNH SỬA
-========================= */
-
-function showEditForm() {
-
-    if (!selectedAccount) return;
-
-    isAdding = false;
-
-    editingAccountId =
-        selectedAccount.id;
-
-    document.getElementById('form-title').textContent =
-        'Chỉnh sửa tài khoản';
-
-
-    fillForm(selectedAccount);
-
-
-    document
-        .getElementById('account-detail-section')
-        .classList.add('hidden');
-
-    document
-        .getElementById('account-form-section')
-        .classList.remove('hidden');
-}
-
-
-/* =========================
-   HIỂN THỊ FORM THÊM
-========================= */
-
-function showAddForm() {
-
-    isAdding = true;
-
-    editingAccountId = null;
-
-    document.getElementById('form-title').textContent =
-        'Thêm tài khoản';
-
-
-    document
-        .getElementById('account-form')
-        .reset();
-
-    document
-        .getElementById('form-error')
-        .classList.add('hidden');
-
-
-    document
-        .getElementById('account-list-section')
-        .classList.add('hidden');
-
-    document
-        .getElementById('account-form-section')
-        .classList.remove('hidden');
-
-    document
-        .getElementById('history-section')
-        .classList.add('hidden');
-}
-
-
-/* =========================
-   ĐIỀN FORM
-========================= */
-
-function fillForm(account) {
-
-    document.getElementById('name').value =
-        account.name;
-
-    document.getElementById('phone').value =
-        account.phone;
-
-    document.getElementById('email').value =
-        account.email;
-
-    document.getElementById('cccd').value =
-        account.cccd;
-
-    document.getElementById('role').value =
-        account.role;
-
-    document.getElementById('dob').value =
-        convertDate(account.dob);
-
-    document.getElementById('address').value =
-        account.address;
-
-    document.getElementById('ward').value =
-        account.ward;
-
-}
-
-
-/* =========================
-   ĐỔI DD/MM/YYYY → YYYY-MM-DD
-========================= */
-
-function convertDate(date) {
-
-    const parts = date.split('/');
-
-    if (parts.length !== 3) return '';
-
-    return `${parts[2]}-${parts[1]}-${parts[0]}`;
-}
-
-
-/* =========================
-   LƯU TÀI KHOẢN
-========================= */
-
-function saveAccount(event) {
-
-    event.preventDefault();
-
-
-    const name =
-        document.getElementById('name').value.trim();
-
-    const phone =
-        document.getElementById('phone').value.trim();
-
-    const email =
-        document.getElementById('email').value.trim();
-
-    const cccd =
-        document.getElementById('cccd').value.trim();
-
-    const role =
-        document.getElementById('role').value;
-
-    const dob =
-        document.getElementById('dob').value;
-
-    const address =
-        document.getElementById('address').value.trim();
-
-    const ward =
-        document.getElementById('ward').value.trim();
-
-
-    /* =========================
-       VALIDATE
-    ========================= */
-
-    const error =
-        document.getElementById('form-error');
-
-
-    if (
-        !name ||
-        !phone ||
-        !cccd ||
-        !role ||
-        !dob ||
-        !address ||
-        !ward
-    ) {
-
-        error.textContent =
-            'Lưu thất bại. Vui lòng nhập đầy đủ thông tin bắt buộc.';
-
-        error.classList.remove('hidden');
-
-        return;
-
-    }
-
-
-    if (!/^\d{10,11}$/.test(phone)) {
-
-        error.textContent =
-            'Lưu thất bại. Số điện thoại không hợp lệ.';
-
-        error.classList.remove('hidden');
-
-        return;
-
-    }
-
-
-    if (!/^\d{12}$/.test(cccd)) {
-
-        error.textContent =
-            'Lưu thất bại. Số CCCD phải gồm 12 chữ số.';
-
-        error.classList.remove('hidden');
-
-        return;
-
-    }
-
-
-    error.classList.add('hidden');
-
-
-    /* =========================
-       CẬP NHẬT / THÊM
-    ========================= */
-
-    if (isAdding) {
-
-        showSuccess(
-            'Thêm tài khoản thành công.'
-        );
-
-        // Demo: giả lập hệ thống lưu lịch sử
-        console.log('Lưu lịch sử thao tác:', {
-            action: 'CREATE_ACCOUNT',
-            name,
-            role
-        });
-
-    } else {
-
-        showSuccess(
-            'Cập nhật tài khoản thành công.'
-        );
-
-        // Demo: giả lập hệ thống lưu lịch sử
-        console.log('Lưu lịch sử thay đổi:', {
-            action: 'UPDATE_ACCOUNT',
-            accountId: editingAccountId,
-            name,
-            role
-        });
-
-    }
-
-}
-
-
-/* =========================
-   THÔNG BÁO THÀNH CÔNG
-========================= */
-
-function showSuccess(message) {
-
-    const success =
-        document.getElementById('success-message');
-
-    document.getElementById('success-text')
-        .textContent = message;
-
-    success.classList.remove('hidden');
-
-
-    setTimeout(() => {
-
-        success.classList.add('hidden');
-
-        if (isAdding) {
-
-            backToList();
-
-        } else {
-
-            cancelForm();
-
-        }
-
-    }, 1800);
-
-}
-
-
-/* =========================
-   QUAY LẠI DANH SÁCH
-========================= */
-
-function backToList() {
-
-    document
-        .getElementById('account-detail-section')
-        .classList.add('hidden');
-
-    document
-        .getElementById('account-form-section')
-        .classList.add('hidden');
-
-    document
-        .getElementById('history-section')
-        .classList.add('hidden');
-
-    document
-        .getElementById('account-list-section')
-        .classList.remove('hidden');
-
-}
-
-
-/* =========================
-   HỦY FORM
-========================= */
-
-function cancelForm() {
-
-    document
-        .getElementById('account-form-section')
-        .classList.add('hidden');
-
-
-    if (selectedAccount && !isAdding) {
-
-        document
-            .getElementById('account-detail-section')
-            .classList.remove('hidden');
-
-        document
-            .getElementById('history-section')
-            .classList.remove('hidden');
-
-    } else {
-
-        backToList();
-
-    }
-
-}
-
-
-/* =========================
-   DEMO KHÔNG CÓ TÀI KHOẢN
-========================= */
-
-// Có thể dùng đoạn này để test Alternative Flow 2.1:
-//
-// accounts.length = 0;
-// searchAccounts();
-
-</script>
-
+</main>
 </body>
 </html>
-

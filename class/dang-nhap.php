@@ -1,4 +1,5 @@
 <?php
+    require_once __DIR__ . '/mat-khau.php';
     class CtrlDangNhap{ 
         private $conn;
 
@@ -9,7 +10,6 @@
 
 
         public function DangNhap($email, $password) {
-            $hashedPassword = sha1($password);
 
             $stmt = $this->conn->prepare(
                 "SELECT email, nd.manguoidung, vaitro, hs.ten, hs.anhdaidien, matkhau FROM nguoidung nd LEFT JOIN hosonguoidung hs ON nd.manguoidung = hs.manguoidung WHERE nd.email = ? OR hs.socccd=?"
@@ -24,7 +24,7 @@
             $stmt->close();
 
             if ($user) {
-                if ($user['matkhau'] != $hashedPassword){
+                if (!kiemTraMatKhau($password, $user['matkhau'])){
                     return "Sai mật khẩu";
                 }
                 $_SESSION['manguoidung'] = $user['manguoidung'];

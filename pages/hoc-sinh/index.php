@@ -46,6 +46,7 @@
             </div>
 
             <!-- Thông báo -->
+            <a href="/stackers_project/pages/doi-mat-khau/" class="inline-block mb-6 rounded-xl border border-blue-200 bg-white px-5 py-3 font-medium text-blue-700 hover:bg-blue-50">Đổi mật khẩu</a>
             <div class="relative overflow-hidden rounded-2xl
                         bg-gradient-to-r from-blue-700 to-indigo-600
                         p-6 sm:p-8 mb-10 text-white shadow-lg shadow-blue-100">

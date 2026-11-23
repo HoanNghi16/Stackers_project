@@ -1,3 +1,53 @@
+<?php
+session_start();
+$roles = ['SO_GD' => 'Sở GD&ĐT', 'THCS' => 'Trường THCS', 'THPT' => 'Trường THPT', 'HOC_SINH' => 'Học sinh'];
+$role = $_SESSION['vaitro'] ?? '';
+if (empty($_SESSION['manguoidung']) || !isset($roles[$role])) {
+    header('Location: /stackers_project/pages/login/');
+    exit;
+}
+header('Cache-Control: no-store');
+require_once __DIR__ . '/../../class/doi-mat-khau.php';
+$_SESSION['doi_mat_khau_csrf'] ??= bin2hex(random_bytes(32));
+$errors = [];
+$success = $_SESSION['doi_mat_khau_success'] ?? false;
+unset($_SESSION['doi_mat_khau_success']);
+$account = ['ten' => $_SESSION['ten'] ?? '', 'email' => ''];
+try {
+    require __DIR__ . '/../../index.php';
+    $stmt = $conn->prepare('SELECT nd.email, hs.ten FROM nguoidung nd LEFT JOIN hosonguoidung hs ON hs.manguoidung = nd.manguoidung WHERE nd.manguoidung = ?');
+    $stmt->bind_param('i', $_SESSION['manguoidung']);
+    $stmt->execute();
+    $account = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    if (!$account) {
+        header('Location: /stackers_project/pages/logout/');
+        exit;
+    }
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        $token = $_POST['csrf_token'] ?? '';
+        if (!is_string($token) || !hash_equals($_SESSION['doi_mat_khau_csrf'], $token)) {
+            $errors['general'] = 'Phiên gửi biểu mẫu không hợp lệ. Vui lòng thử lại.';
+        } else {
+            $controller = new CtrlDoiMatKhau($conn);
+            $errors = $controller->doiMatKhau((int) $_SESSION['manguoidung'], $_POST);
+            if (!$errors) {
+                session_regenerate_id(true);
+                $_SESSION['doi_mat_khau_csrf'] = bin2hex(random_bytes(32));
+                $_SESSION['doi_mat_khau_success'] = true;
+                header('Location: /stackers_project/pages/doi-mat-khau/', true, 303);
+                exit;
+            }
+        }
+    }
+} catch (Throwable $e) {
+    $errors['general'] = 'Đổi mật khẩu không thành công.';
+}
+function escapePasswordPage($value): string {
+    return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
+}
+$home = '/stackers_project/pages/' . str_replace('_', '-', strtolower($role)) . '/';
+?>
 <!DOCTYPE html>
 <html lang="vi">
 <head>
@@ -7,52 +57,50 @@
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-slate-100 min-h-screen text-slate-800">
-    <div class="text-white bg-indigo-700 max-w-3xl mx-auto px-4 py-4 mt-3">
-        <div class="max-w-3xl mx-auto px-4 py-4">   
-            <p class="text-xs uppercase tracking-wide text-indigo-200">Cổng học sinh</p>
-            <h1 class="text-xl font-bold">Đổi mật khẩu</h1>
-        </div>
-    </div>
-
-    <main class="max-w-3xl mx-auto px-4 py-6 space-y-4">
-        <section class="bg-white shadow-sm p-5">
-            <p class="font-semibold text-slate-800 mb-4 pb-3 border-b border-slate-100">Tài khoản</p>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <label class="block">
-                    <span class="text-sm text-slate-500">Họ và tên</span>
-                    <input type="text" class="mt-1 w-full border border-slate-300 px-3 py-2 bg-slate-50 text-slate-700 focus:outline-none" value="Nguyễn Văn An" readonly>
-                </label>
-                <label class="block">
-                    <span class="text-sm text-slate-500">Tên đăng nhập</span>
-                    <input type="text" class="mt-1 w-full border border-slate-300 px-3 py-2 bg-slate-50 text-slate-700 focus:outline-none" value="26010012" readonly>
-                </label>
-            </div>
+    <main class="max-w-3xl mx-auto px-4 py-8 space-y-5">
+        <a href="<?= escapePasswordPage($home) ?>" class="text-indigo-700 hover:underline">← Về trang tổng quan</a>
+        <header class="rounded-xl bg-indigo-700 text-white p-6">
+            <p class="text-sm text-indigo-200"><?= escapePasswordPage($roles[$role]) ?></p>
+            <h1 class="text-2xl font-bold mt-1">Đổi mật khẩu</h1>
+        </header>
+        <?php if ($success): ?>
+            <div role="status" class="rounded-lg border border-green-200 bg-green-50 text-green-800 p-4">Đổi mật khẩu thành công.</div>
+        <?php endif; ?>
+        <?php if (isset($errors['general'])): ?>
+            <div role="alert" class="rounded-lg border border-red-200 bg-red-50 text-red-700 p-4"><?= escapePasswordPage($errors['general']) ?></div>
+        <?php endif; ?>
+        <section class="bg-white rounded-xl shadow-sm p-5">
+            <h2 class="font-semibold mb-4">Tài khoản</h2>
+            <dl class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div><dt class="text-sm text-slate-500">Họ và tên</dt><dd class="mt-1 break-words"><?= escapePasswordPage($account['ten'] ?? '') ?></dd></div>
+                <div><dt class="text-sm text-slate-500">Email đăng nhập</dt><dd class="mt-1 break-words"><?= escapePasswordPage($account['email'] ?? '') ?></dd></div>
+            </dl>
         </section>
-
-        <form class="bg-white shadow-sm p-4 space-y-4">
-            <h2 class="font-semibold pb-3 border-b border-slate-100">Đổi mật khẩu</h2>
-            <p class="text-sm text-slate-500">Mật khẩu mới tối thiểu 8 ký tự, gồm chữ và số.</p>
-
-            <label class="block">
-                <span class="text-sm font-medium">Mật khẩu hiện tại <span class="text-red-500">*</span></span>
-                <input type="password" class="mt-1 w-full border border-slate-300 px-3 py-2 bg-white focus:outline-none focus:border-indigo-500" placeholder="Nhập mật khẩu hiện tại">
-            </label>
-
-            <label class="block">
-                <span class="text-sm font-medium">Mật khẩu mới <span class="text-red-500">*</span></span>
-                <input type="password" class="mt-1 w-full border border-slate-300 px-3 py-2 bg-white focus:outline-none focus:border-indigo-500" placeholder="Nhập mật khẩu mới">
-            </label>
-
-            <label class="block">
-                <span class="text-sm font-medium">Xác nhận mật khẩu mới <span class="text-red-500">*</span></span>
-                <input type="password" class="mt-1 w-full border border-slate-300 px-3 py-2 bg-white focus:outline-none focus:border-indigo-500" placeholder="Nhập lại mật khẩu mới">
-            </label>
-
-            <div class="flex gap-2 pt-2">
-                <button type="button" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2">Cập nhật mật khẩu</button>
-                <button type="button" class="px-7 border border-slate-300 hover:bg-slate-50">Hủy</button>
+        <form method="post" action="/stackers_project/pages/doi-mat-khau/" class="bg-white rounded-xl shadow-sm p-5 space-y-4">
+            <input type="hidden" name="csrf_token" value="<?= escapePasswordPage($_SESSION['doi_mat_khau_csrf']) ?>">
+            <p id="password-help" class="text-sm text-slate-500">Mật khẩu mới tối thiểu 6 ký tự.</p>
+            <?php foreach (['current_password' => 'Mật khẩu hiện tại', 'new_password' => 'Mật khẩu mới', 'confirm_password' => 'Xác nhận mật khẩu mới'] as $field => $label): ?>
+                <div>
+                    <label for="<?= $field ?>" class="block text-sm font-medium"><?= $label ?> <span class="text-red-500">*</span></label>
+                    <input id="<?= $field ?>" name="<?= $field ?>" type="password" required autocomplete="<?= $field === 'current_password' ? 'current-password' : 'new-password' ?>"
+                        aria-invalid="<?= isset($errors[$field]) ? 'true' : 'false' ?>" aria-describedby="password-help <?= $field ?>-error"
+                        class="mt-1 w-full rounded-lg border <?= isset($errors[$field]) ? 'border-red-500' : 'border-slate-300' ?> px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    <p id="<?= $field ?>-error" class="text-sm text-red-600 mt-1" role="alert"><?= escapePasswordPage($errors[$field] ?? '') ?></p>
+                </div>
+            <?php endforeach; ?>
+            <label class="flex items-center gap-2 text-sm"><input id="show-passwords" type="checkbox"> Hiển thị mật khẩu</label>
+            <div class="flex gap-3 pt-2">
+                <button type="submit" class="flex-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2">Đổi mật khẩu</button>
+                <a href="<?= escapePasswordPage($home) ?>" class="rounded-lg px-7 py-2 border border-slate-300 hover:bg-slate-50">Hủy</a>
             </div>
         </form>
     </main>
+    <script>
+    document.getElementById('show-passwords').addEventListener('change', function () {
+        ['current_password', 'new_password', 'confirm_password'].forEach(id => {
+            document.getElementById(id).type = this.checked ? 'text' : 'password';
+        });
+    });
+    </script>
 </body>
 </html>

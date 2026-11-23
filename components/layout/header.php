@@ -81,13 +81,22 @@ function renderHeader()
                         if (isset($_SESSION['ten'])){
                             $ten = $_SESSION['ten'];
                         }
+                        $ten = htmlspecialchars($ten, ENT_QUOTES, 'UTF-8');
 
                         echo '
-                            <a href="/stackers_project/pages/'.$site.'"
-                            class="inline-flex items-center gap-2 rounded-xl bg-blue-50 px-3 py-2 text-sm text-blue-700 transition hover:bg-blue-100">
-                                <span class="font-medium">Xin chào, '.$ten.'.</span>
-                                <span class="text-xs text-blue-500">Vào dashboard</span>
-                            </a>
+                            <div class="relative inline-flex items-center rounded-xl bg-blue-50 text-sm text-blue-700" data-account-dropdown>
+                                <a href="/stackers_project/pages/'.$site.'" class="inline-flex items-center gap-2 rounded-l-xl px-3 py-2 hover:bg-blue-100">
+                                    <span class="font-medium">Xin chào, '.$ten.'.</span>
+                                    <span class="text-xs text-blue-500">Vào dashboard</span>
+                                </a>
+                                <button type="button" aria-label="Mở menu tài khoản" aria-expanded="false" aria-controls="account-dropdown-panel" class="rounded-r-xl border-l border-blue-200 px-2 py-2 hover:bg-blue-100 focus-visible:outline focus-visible:outline-2" data-account-toggle>
+                                    <svg class="h-5 w-5 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6"/></svg>
+                                </button>
+                                <div id="account-dropdown-panel" hidden class="absolute right-0 top-full mt-2 w-56 rounded-xl border border-slate-200 bg-white p-2 text-slate-700 shadow-lg">
+                                    <a href="/stackers_project/pages/doi-mat-khau/" class="block rounded-lg px-3 py-2.5 hover:bg-blue-50 hover:text-blue-700">Đổi mật khẩu</a>
+                                    <button type="button" disabled class="block w-full cursor-default rounded-lg px-3 py-2.5 text-left text-slate-400" title="Chức năng đang được phát triển">Thông tin cá nhân</button>
+                                </div>
+                            </div>
                             <a
                                 href="/stackers_project/pages/logout/"
                                 class="inline-flex items-center gap-2 rounded-xl bg-blue-50 px-3 py-2 text-sm text-blue-700 transition hover:bg-blue-100">
@@ -159,5 +168,32 @@ function renderHeader()
         </div>
 
     </header>
+    <?php require __DIR__ . '/doi-mat-khau-modal.php'; ?>
+    <script>
+    (() => {
+        const dropdown = document.querySelector('[data-account-dropdown]');
+        if (!dropdown) return;
+        const toggle = dropdown.querySelector('[data-account-toggle]');
+        const panel = dropdown.querySelector('#account-dropdown-panel');
+        const setOpen = (open) => {
+            panel.hidden = !open;
+            toggle.setAttribute('aria-expanded', String(open));
+            toggle.querySelector('svg').style.transform = open ? 'rotate(180deg)' : '';
+        };
+        toggle.addEventListener('click', () => setOpen(panel.hidden));
+        document.addEventListener('click', event => {
+            if (!dropdown.contains(event.target)) setOpen(false);
+        });
+        dropdown.addEventListener('keydown', event => {
+            if (event.key === 'Escape') {
+                setOpen(false);
+                toggle.focus();
+            }
+        });
+        dropdown.addEventListener('focusout', event => {
+            if (!dropdown.contains(event.relatedTarget)) setOpen(false);
+        });
+    })();
+    </script>
     <?php
 }
