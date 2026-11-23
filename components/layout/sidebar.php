@@ -15,6 +15,7 @@ function renderSidebar() {
         ],
 
         'SO_GD' => [
+            ['ten' => 'Thống kê, báo cáo', 'url' => '/stackers_project/pages/so-gd/thong-ke-bao-cao'],
             ['ten' => 'Công bố điểm chuẩn', 'url' => '/stackers_project/pages/so-gd/cong-bo-diem-chuan'],
             ['ten' => 'Nhập điểm phúc khảo', 'url' => '/stackers_project/pages/so-gd/nhap-diem-phuc-khao'],
             ['ten' => 'Nhập điểm thi', 'url' => '/stackers_project/pages/so-gd/nhap-diem-thi'],
