@@ -111,7 +111,7 @@
                 </div>
 
                 <span class="text-sm text-slate-400 hidden sm:block">
-                    04 chức năng
+                    06 chức năng
                 </span>
             </div>
 
@@ -270,6 +270,55 @@
                         </span>
                         <svg class="w-5 h-5 text-slate-300
                                     group-hover:text-emerald-600
+                                    group-hover:translate-x-1
+                                    transition-all"
+                             fill="none" stroke="currentColor"
+                             viewBox="0 0 24 24">
+                            <path stroke-linecap="round"
+                                  stroke-linejoin="round"
+                                  stroke-width="2"
+                                  d="M5 12h14m-6-6l6 6-6 6"/>
+                        </svg>
+                    </div>
+                </a>
+
+                <!-- Xác nhận nhập học -->
+                <a href="xac-nhan-nhap-hoc/"
+                   class="group bg-white border border-slate-200
+                          rounded-2xl p-6 shadow-sm
+                          hover:shadow-xl hover:shadow-teal-100/70
+                          hover:-translate-y-1 hover:border-teal-300
+                          transition-all duration-300">
+
+                    <div class="w-14 h-14 flex items-center justify-center
+                                rounded-2xl bg-teal-50 text-teal-600
+                                group-hover:bg-teal-600 group-hover:text-white
+                                transition-colors duration-300">
+                        <svg class="w-7 h-7" fill="none"
+                             stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round"
+                                  stroke-linejoin="round"
+                                  stroke-width="1.8"
+                                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                    </div>
+
+                    <h3 class="mt-5 text-lg font-bold text-slate-900
+                               group-hover:text-teal-700 transition-colors">
+                        Xác nhận nhập học
+                    </h3>
+
+                    <p class="mt-2 text-sm text-slate-500 leading-relaxed">
+                        Xác nhận nhập học chính thức tại trường bạn đã trúng tuyển.
+                    </p>
+
+                    <div class="mt-6 flex items-center justify-between">
+                        <span class="text-xs font-semibold text-teal-600
+                                     bg-teal-50 px-3 py-1.5 rounded-lg">
+                            NHẬP HỌC
+                        </span>
+                        <svg class="w-5 h-5 text-slate-300
+                                    group-hover:text-teal-600
                                     group-hover:translate-x-1
                                     transition-all"
                              fill="none" stroke="currentColor"

@@ -1,420 +1,240 @@
 <?php
-// Wireframe / mockup — Gộp 2 use case:
-// 1. "Tra cứu kết quả thi/trúng tuyển" (Actor: Học sinh & Phụ huynh)
-// 2. "Xác nhận nhập học" (Actor: Học sinh & Phụ huynh)
-// Dữ liệu bên dưới là dữ liệu mẫu để dựng giao diện, chưa kết nối CSDL thật.
+/**
+ * Use case: Tra cứu kết quả thi/trúng tuyển (Actor: Học sinh).
+ * GiaoDienTraCuu: chỉ dựng giao diện, nghiệp vụ nằm ở CtrlTraCuu.
+ */
 
-$pageTitle = "Stackers - Tra cứu kết quả thi/trúng tuyển";
-$soLanToiDa = 5; // số lần nhập sai tối đa trước khi khóa chức năng (Exception flow 4.2)
+use TraCuuKetQua\CtrlTraCuu;
 
-// Dữ liệu mẫu để JS đối chiếu khi tra cứu (giả lập, không phải xử lý phía server thật)
-// Bổ sung: nguyenVong, daXacNhanNhapHoc, chiTietTruong (dùng cho use case Xác nhận nhập học)
-$thiSinhMau = [
-    'SBD001234' => [
-        'hoTen'   => 'Nguyễn Văn A',
-        'ngaySinh'=> '2010-05-14',
-        'diem'    => ['Toán' => 8.5, 'Ngữ văn' => 7.0, 'Tiếng Anh' => 9.0],
-        'trungTuyen' => true,
-        'truong'  => 'THPT Nguyễn Thị Minh Khai',
-        'nguyenVong' => 'Nguyện vọng 1',
-        'daXacNhanNhapHoc' => false,
-        'conHanXacNhan' => true, // false => hết hạn xác nhận
-        'chiTietTruong' => [
-            'diaChi' => '275 Đường Điện Biên Phủ, Phường Vườn Chuối, TP.HCM',
-            'chuongTrinhDaoTao' => 'Chương trình chuẩn + Tăng cường Tiếng Anh',
-            'hocPhi' => '2.500.000 đ / tháng',
-        ],
-    ],
-    'SBD005678' => [
-        'hoTen'   => 'Trần Thị B',
-        'ngaySinh'=> '2010-11-02',
-        'diem'    => ['Toán' => 5.0, 'Ngữ văn' => 6.0, 'Tiếng Anh' => 4.5],
-        'trungTuyen' => false,
-        'truong'  => null,
-        'nguyenVong' => null,
-        'daXacNhanNhapHoc' => false,
-        'conHanXacNhan' => false,
-        'chiTietTruong' => null,
-    ],
-];
+session_start();
 
-require_once $_SERVER['DOCUMENT_ROOT'] . '/Stackers_project/components/layout/header.php';
+require __DIR__ . '/../../../index.php';                         // tạo $conn (và $env)
+require __DIR__ . '/../../../class/tra-cuu-ket-qua/ctrlTraCuu.php';
+require __DIR__ . '/../../../components/layout/header.php';
+
+// Tiền điều kiện: học sinh đã đăng nhập.
+if (($env['DEV_FAKE_LOGIN'] ?? '') === '1' && empty($_SESSION['vaitro'])) {
+    $_SESSION['vaitro'] = 'HOC_SINH';   // chỉ để chạy thử, KHÔNG bật trên môi trường thật
+}
+if (($_SESSION['vaitro'] ?? null) !== 'HOC_SINH' || empty($_SESSION['manguoidung'])) {
+    header('Location: /stackers_project/pages/login');
+    exit;
+}
+$maNguoiDung = (int) $_SESSION['manguoidung'];
+
+function h(?string $s): string
+{
+    return htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
+}
+
+/** "8.50" -> "8.5", "9.00" -> "9" */
+function fmtDiem(?string $v): string
+{
+    if ($v === null || $v === '') return '—';
+    return str_contains($v, '.') ? rtrim(rtrim($v, '0'), '.') : $v;
+}
+
+$ctrl   = new CtrlTraCuu($conn);
+$sbd    = trim((string) ($_GET['sbd'] ?? ''));
+$daTim  = isset($_GET['sbd']);
+$kq     = null;
+$modal  = null;
+
+if ($daTim) {
+    $kq = $ctrl->traCuu($maNguoiDung, $sbd);
+    if ($kq['trangThai'] !== 'ok') {
+        $modal = $kq['trangThai'] === 'khong_tim_thay'
+            ? ['loai' => 'loi', 'tieuDe' => 'Không tìm thấy số báo danh', 'dong' => $kq['chiTiet']]
+            : ['loai' => 'loi', 'tieuDe' => 'Không thể tra cứu', 'dong' => [$kq['thongBao']]];
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="vi">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title><?php echo $pageTitle; ?></title>
-<script src="https://cdn.tailwindcss.com"></script>
-<style>
-  body { font-family: Arial, Helvetica, sans-serif; }
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stackers - Tra cứu kết quả thi/trúng tuyển</title>
+    <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-100 text-gray-900">
+<body class="min-h-screen bg-slate-100 text-slate-800">
+<?php renderHeader(); ?>
 
-  <?php renderHeader(); ?>
+<main class="mx-auto max-w-3xl px-4 pb-12 pt-28">
+    <div>
+        <a href="/stackers_project/pages/hoc-sinh/" class="mb-4 inline-block text-sm font-medium text-indigo-700 hover:underline">&larr; Về trang chức năng</a>
+        <div class="mb-6 overflow-hidden rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-indigo-50/70 p-5 shadow-sm sm:p-7">
+            <div class="mb-3 inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-white/90 px-3.5 py-1.5 shadow-sm">
+                <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+                <span class="text-[11px] font-bold uppercase tracking-[0.16em] text-indigo-700">Cổng thông tin học sinh</span>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="hidden h-12 w-1 shrink-0 rounded-full bg-gradient-to-b from-indigo-500 to-cyan-400 sm:block"></div>
+                <div>
+                    <h1 class="text-2xl font-extrabold tracking-tight sm:text-3xl">Tra cứu kết quả thi/trúng tuyển</h1>
+                    <p class="mt-1 text-sm text-slate-500">Nhập số báo danh của bạn để xem điểm thi từng môn và kết quả xét tuyển lớp 10.</p>
+                </div>
+            </div>
+        </div>
 
-  <div class="max-w-3xl mx-auto px-4 pt-20">
+        <form method="get" class="mt-6 flex flex-wrap items-end gap-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div class="min-w-[16rem] flex-1">
+                <label for="sbd" class="block text-sm font-medium">Số báo danh</label>
+                <input type="text" id="sbd" name="sbd" value="<?= h($sbd) ?>" maxlength="20" autocomplete="off" required
+                       placeholder="Ví dụ: 26010012"
+                       class="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-300">
+            </div>
+            <button type="submit" class="rounded-lg bg-blue-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-800">Tra cứu</button>
+        </form>
 
-    <!-- Breadcrumb -->
-    <div class="text-sm text-gray-500 mt-4 mb-2">
-      Trang chủ &nbsp;/&nbsp; <span class="text-gray-800">Tra cứu kết quả thi/trúng tuyển</span>
+        <?php if ($kq && $kq['trangThai'] === 'ok'):
+            $hs = $kq['hocSinh']; $dt = $kq['diemThi']; $xt = $kq['xetTuyen'];
+            $ns = $hs['ngaysinh'] ? DateTime::createFromFormat('Y-m-d', $hs['ngaysinh']) : false;
+        ?>
+        <section class="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div class="grid gap-4 sm:grid-cols-3">
+                <div><div class="text-xs uppercase tracking-wide text-slate-400">Họ tên</div><div class="mt-1 font-semibold"><?= h($hs['hoten']) ?></div></div>
+                <div><div class="text-xs uppercase tracking-wide text-slate-400">Số báo danh</div><div class="mt-1 font-semibold"><?= h($hs['sobaodanh']) ?></div></div>
+                <div><div class="text-xs uppercase tracking-wide text-slate-400">Ngày sinh</div><div class="mt-1 font-semibold"><?= $ns ? h($ns->format('d/m/Y')) : '—' ?></div></div>
+            </div>
+        </section>
+
+        <section class="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div class="border-b border-slate-100 px-6 py-4"><h2 class="font-semibold">Điểm thi</h2></div>
+            <?php if (!$dt['congBo']): ?>
+                <div class="px-6 py-6 text-sm text-amber-800"><?= h($dt['thongBao']) ?></div>
+            <?php elseif ($dt['ds'] === []): ?>
+                <div class="px-6 py-6 text-sm text-slate-500">Chưa có điểm thi nào của bạn.</div>
+            <?php else: ?>
+            <table class="w-full text-sm">
+                <thead class="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                    <tr><th class="px-6 py-3">Môn thi</th><th class="px-6 py-3 text-right">Điểm</th><th class="px-6 py-3 text-right">Hệ số</th><th class="px-6 py-3">Ghi chú</th></tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                <?php foreach ($dt['ds'] as $m): ?>
+                    <tr>
+                        <td class="px-6 py-3 font-medium"><?= h($m['tenmonhoc']) ?></td>
+                        <td class="px-6 py-3 text-right font-semibold"><?= (int) $m['vang'] === 1 ? 'Vắng' : h(fmtDiem($m['diem'])) ?></td>
+                        <td class="px-6 py-3 text-right text-slate-500"><?= $m['heso'] === null ? '—' : h(fmtDiem($m['heso'])) ?></td>
+                        <td class="px-6 py-3 text-slate-500">
+                            <?php if ((float) $m['tyletrudiem'] > 0): ?>Bị trừ điểm<?= $m['lydotrudiem'] ? ': ' . h($m['lydotrudiem']) : '' ?><?php endif; ?>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+            <?php endif; ?>
+        </section>
+
+        <?php if ($dt['congBo']): ?>
+        <section class="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h2 class="font-semibold">Kết quả xét tuyển</h2>
+            <?php if (!$xt['congBo']): ?>
+                <div class="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"><?= h($xt['thongBao']) ?></div>
+            <?php elseif ($xt['ketQua'] === 'trung_tuyen'): ?>
+                <div class="mt-3 rounded-lg border border-green-200 bg-green-50 px-4 py-4">
+                    <div class="text-lg font-bold text-green-700">Trúng tuyển</div>
+                    <div class="mt-1 text-sm text-green-900">
+                        <?= h($xt['truong']) ?> · Nguyện vọng <?= (int) $xt['nv'] ?>
+                        <?php if ($xt['tongDiem'] !== null && (float) $xt['tongDiem'] > 0): ?> · Điểm xét tuyển: <b><?= h(fmtDiem($xt['tongDiem'])) ?></b><?php endif; ?>
+                    </div>
+                    <?php if ($xt['diaChi']): ?><div class="mt-1 text-sm text-green-800"><?= h($xt['diaChi']) ?></div><?php endif; ?>
+                    <?php if ($xt['daXacNhan']): ?><div class="mt-2 inline-block rounded-full border border-green-300 bg-white px-3 py-0.5 text-xs font-semibold text-green-700">Đã xác nhận nhập học</div><?php endif; ?>
+                    <?php if (!$xt['daXacNhan']): ?>
+                        <a href="/stackers_project/pages/hoc-sinh/xac-nhan-nhap-hoc/" class="mt-3 inline-block rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800">Xác nhận nhập học</a>
+                    <?php endif; ?>
+                </div>
+            <?php elseif ($xt['ketQua'] === 'khong_dang_ky'): ?>
+                <div class="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">Bạn chưa đăng ký nguyện vọng nào trong kỳ tuyển sinh này.</div>
+            <?php else: ?>
+                <div class="mt-3 rounded-lg border border-red-200 bg-red-50 px-4 py-4">
+                    <div class="text-lg font-bold text-red-700">Không trúng tuyển</div>
+                    <div class="mt-1 text-sm text-red-800">Bạn không trúng tuyển vào các nguyện vọng đã đăng ký.</div>
+                </div>
+            <?php endif; ?>
+        </section>
+        <?php endif; ?>
+        <?php endif; ?>
     </div>
+</main>
 
-    <!-- Page header -->
-    <div class="mb-6">
-      <h1 class="text-xl font-semibold">Tra cứu kết quả thi/trúng tuyển</h1>
-      <p class="text-sm text-gray-500 mt-1">
-        Nhập số báo danh và thông tin xác thực để xem điểm thi từng môn, kết quả trúng tuyển và xác nhận nhập học.
-      </p>
-    </div>
-
-    <!-- Khối khóa chức năng (Exception flow 4.2, ẩn mặc định) -->
-    <div id="khoiBiKhoa" class="hidden mb-4 border border-gray-500 bg-gray-100 px-4 py-3 rounded">
-      <p class="text-sm font-medium">Chức năng tra cứu đã tạm bị khóa</p>
-      <p class="text-sm text-gray-600 mt-1">
-        Bạn đã nhập sai thông tin xác thực quá <?php echo $soLanToiDa; ?> lần. Vui lòng thử lại sau hoặc liên hệ nhà trường để được hỗ trợ.
-      </p>
-    </div>
-
-    <!-- Khối form tra cứu -->
-    <section id="khoiFormTraCuu" class="bg-white border border-gray-300 rounded mb-6">
-      <div class="px-5 py-3 border-b border-gray-300">
-        <h2 class="font-medium">Thông tin tra cứu</h2>
-      </div>
-
-      <form id="formTraCuu" class="px-5 py-4 space-y-4" novalidate>
-
-        <div>
-          <label class="block text-sm mb-1">Số báo danh</label>
-          <input
-            type="text"
-            id="soBaoDanh"
-            placeholder="Ví dụ: SBD001234"
-            class="w-full border border-gray-400 rounded px-3 py-2 text-sm"
-          >
-          <p id="loiSoBaoDanh" class="hidden text-red-600 text-xs mt-1"></p>
+<div id="modalKetQua"
+     class="fixed inset-0 z-[1000] flex items-center justify-center bg-slate-900/50 px-4 <?= $modal ? '' : 'hidden' ?>"
+     role="dialog" aria-modal="true" aria-labelledby="modalTieuDe">
+    <div class="w-full max-w-md rounded-2xl bg-white shadow-2xl">
+        <div class="px-6 pb-2 pt-7 text-center">
+            <div id="modalIconThanhCong"
+                 class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-green-100 text-green-600 <?= ($modal['loai'] ?? '') === 'thanh_cong' ? '' : 'hidden' ?>">
+                <svg class="h-7 w-7" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+            </div>
+            <div id="modalIconLoi"
+                 class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-red-100 text-red-600 <?= ($modal['loai'] ?? 'loi') === 'loi' ? '' : 'hidden' ?>">
+                <svg class="h-7 w-7" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v5m0 3.5h.01M10.3 3.9L2.4 17.6A2 2 0 004.1 20.5h15.8a2 2 0 001.7-2.9L13.7 3.9a2 2 0 00-3.4 0z"/></svg>
+            </div>
+            <h3 id="modalTieuDe" class="mt-4 text-lg font-bold text-slate-800"><?= h($modal['tieuDe'] ?? '') ?></h3>
+            <div id="modalNoiDung" class="mt-2 max-h-60 overflow-y-auto text-sm text-slate-600">
+                <?php if ($modal && $modal['dong']): ?>
+                    <?php if ($modal['loai'] === 'thanh_cong'): ?>
+                        <p><?= h($modal['dong'][0]) ?></p>
+                    <?php else: ?>
+                        <ul class="list-disc space-y-1 pl-5 text-left">
+                            <?php foreach ($modal['dong'] as $dong): ?><li><?= h($dong) ?></li><?php endforeach; ?>
+                        </ul>
+                    <?php endif; ?>
+                <?php endif; ?>
+            </div>
         </div>
-
-        <div>
-          <label class="block text-sm mb-1">Ngày sinh (thông tin xác thực)</label>
-          <input
-            type="date"
-            id="ngaySinh"
-            class="w-full border border-gray-400 rounded px-3 py-2 text-sm"
-          >
-          <p id="loiNgaySinh" class="hidden text-red-600 text-xs mt-1"></p>
-        </div>
-
-        <!-- Thông báo không tìm thấy / không khớp (Alternative flow 4.1) -->
-        <div id="thongBaoKhongKhop" class="hidden border border-gray-500 bg-gray-50 px-3 py-2 rounded text-sm">
-          Không tìm thấy thông tin hoặc thông tin xác thực không khớp. Vui lòng kiểm tra lại.
-          <span class="text-gray-500">(Số lần còn lại: <span id="soLanConLai"><?php echo $soLanToiDa; ?></span>)</span>
-        </div>
-
-        <div class="flex justify-end">
-          <button type="submit" id="btnTraCuu" class="border border-gray-900 bg-gray-900 text-white rounded px-4 py-2 text-sm">
-            Tra cứu
-          </button>
-        </div>
-
-        <p class="text-xs text-gray-400">
-          Dữ liệu mẫu để thử: SBD001234 / 2010-05-14 (trúng tuyển, còn hạn xác nhận) — SBD005678 / 2010-11-02 (không trúng tuyển).
-        </p>
-      </form>
-    </section>
-
-    <!-- Khối kết quả (ẩn mặc định, hiện sau khi tra cứu thành công) -->
-    <section id="khoiKetQua" class="hidden bg-white border border-gray-300 rounded mb-6">
-      <div class="px-5 py-3 border-b border-gray-300 flex items-center justify-between">
-        <h2 class="font-medium">Kết quả tra cứu</h2>
-        <span id="nhanTrangThai" class="text-xs border border-gray-400 px-2 py-1 rounded"></span>
-      </div>
-
-      <div class="px-5 py-4 space-y-4 text-sm">
-        <div class="grid grid-cols-2 gap-y-2">
-          <div class="text-gray-500">Họ và tên</div>
-          <div id="ketQuaHoTen" class="font-medium"></div>
-          <div class="text-gray-500">Số báo danh</div>
-          <div id="ketQuaSoBaoDanh" class="font-medium"></div>
-        </div>
-
-        <div>
-          <h3 class="text-sm font-medium mb-2">Điểm thi từng môn</h3>
-          <table class="w-full text-sm border border-gray-200">
-            <thead>
-              <tr class="text-left text-gray-500 border-b border-gray-200">
-                <th class="px-3 py-2 font-normal">Môn thi</th>
-                <th class="px-3 py-2 font-normal w-24">Điểm</th>
-              </tr>
-            </thead>
-            <tbody id="ketQuaBangDiem"></tbody>
-          </table>
-        </div>
-
-        <div id="ketQuaTruongTrungTuyen" class="hidden border-t border-gray-200 pt-3 space-y-3">
-          <div>
-            <span class="text-gray-500">Trường trúng tuyển:</span>
-            <span id="ketQuaTenTruong" class="font-medium"></span>
-            <span class="text-gray-500">— </span>
-            <span id="ketQuaNguyenVong" class="font-medium"></span>
-          </div>
-
-          <!-- Trạng thái nhập học đã xác nhận (ẩn mặc định) -->
-          <div id="daXacNhanBox" class="hidden border border-gray-400 bg-gray-50 rounded px-3 py-2">
-            ✓ Bạn đã xác nhận nhập học tại trường này.
-          </div>
-
-          <!-- Thông báo hết hạn xác nhận (Tiền điều kiện không thỏa) -->
-          <div id="hetHanXacNhanBox" class="hidden border border-gray-400 bg-gray-50 rounded px-3 py-2 text-gray-600">
-            Đã hết thời hạn xác nhận nhập học cho kết quả trúng tuyển này.
-          </div>
-
-          <!-- Nút mở khối xác nhận nhập học -->
-          <div id="mocXacNhanNhapHoc">
-            <button type="button" id="btnMoXacNhan" class="border border-gray-900 bg-gray-900 text-white rounded px-4 py-2 text-sm">
-              Xác nhận nhập học
+        <div class="px-6 pb-6 pt-4">
+            <button type="button" id="modalDong"
+                    class="w-full rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+                Đóng
             </button>
-          </div>
         </div>
-      </div>
-    </section>
-
-    <!-- ============================================================ -->
-    <!-- Use case: Xác nhận nhập học -->
-    <!-- ============================================================ -->
-    <section id="khoiXacNhanNhapHoc" class="hidden bg-white border border-gray-300 rounded mb-6">
-      <div class="px-5 py-3 border-b border-gray-300">
-        <h2 class="font-medium">Xác nhận nhập học</h2>
-      </div>
-
-      <div class="px-5 py-4 space-y-4 text-sm">
-        <p class="text-gray-600">
-          Vui lòng kiểm tra thông tin trường và nguyện vọng trúng tuyển trước khi xác nhận nhập học chính thức.
-        </p>
-
-        <div class="grid grid-cols-2 gap-y-2 border border-gray-200 rounded px-3 py-3">
-          <div class="text-gray-500">Trường</div>
-          <div id="xnTenTruong" class="font-medium"></div>
-          <div class="text-gray-500">Nguyện vọng trúng tuyển</div>
-          <div id="xnNguyenVong" class="font-medium"></div>
-        </div>
-
-        <!-- Alternative flow 3.1: Xem chi tiết trường trước khi xác nhận -->
-        <div>
-          <button type="button" id="btnXemChiTietTruong" class="text-sm underline text-gray-700">
-            Xem chi tiết trường
-          </button>
-
-          <div id="khoiChiTietTruong" class="hidden mt-2 border border-gray-200 rounded px-3 py-3 space-y-1">
-            <div><span class="text-gray-500">Địa chỉ:</span> <span id="ctDiaChi"></span></div>
-            <div><span class="text-gray-500">Chương trình đào tạo:</span> <span id="ctChuongTrinh"></span></div>
-            <div><span class="text-gray-500">Học phí:</span> <span id="ctHocPhi"></span></div>
-          </div>
-        </div>
-
-        <!-- Thông báo lỗi khi cập nhật (Exception flow 5.1) -->
-        <div id="loiXacNhanNhapHoc" class="hidden border border-gray-500 bg-gray-50 px-3 py-2 rounded text-sm">
-          Xác nhận nhập học không thành công, vui lòng thử lại.
-        </div>
-
-        <div class="flex justify-end gap-2 pt-2">
-          <button type="button" id="btnHuyXacNhan" class="border border-gray-400 rounded px-4 py-2 text-sm">
-            Hủy
-          </button>
-          <button type="button" id="btnXacNhanNhapHoc" class="border border-gray-900 bg-gray-900 text-white rounded px-4 py-2 text-sm">
-            Xác nhận nhập học
-          </button>
-        </div>
-      </div>
-    </section>
-
-    <!-- Thông báo thành công sau khi xác nhận nhập học -->
-    <div id="thongBaoXacNhanThanhCong" class="hidden mb-10 border border-gray-500 bg-gray-50 px-4 py-3 rounded text-sm">
-      Xác nhận nhập học thành công. Chúc mừng bạn đã trở thành học sinh của trường!
     </div>
+</div>
 
-  </div>
+<script>
+// Modal kết quả dùng chung: server mở sẵn khi có thông báo, JS gọi hienModal() khi kiểm tra phía client thất bại.
+(() => {
+    const modal = document.getElementById('modalKetQua');
+    const btnDong = document.getElementById('modalDong');
+    let focusTruoc = null;
 
-  <script>
-    const DU_LIEU_MAU = <?php echo json_encode($thiSinhMau, JSON_UNESCAPED_UNICODE); ?>;
-    const SO_LAN_TOI_DA = <?php echo $soLanToiDa; ?>;
-    let soLanSai = 0;
-    let sbdHienTai = null; // số báo danh đang được xem, dùng cho use case Xác nhận nhập học
+    window.hienModal = function (loai, tieuDe, dong) {
+        const thanhCong = loai === 'thanh_cong';
+        document.getElementById('modalIconThanhCong').classList.toggle('hidden', !thanhCong);
+        document.getElementById('modalIconLoi').classList.toggle('hidden', thanhCong);
+        document.getElementById('modalTieuDe').textContent = tieuDe;
 
-    const inputSoBaoDanh = document.getElementById('soBaoDanh');
-    const inputNgaySinh = document.getElementById('ngaySinh');
-    const loiSoBaoDanh = document.getElementById('loiSoBaoDanh');
-    const loiNgaySinh = document.getElementById('loiNgaySinh');
-    const thongBaoKhongKhop = document.getElementById('thongBaoKhongKhop');
-    const soLanConLaiEl = document.getElementById('soLanConLai');
-    const khoiBiKhoa = document.getElementById('khoiBiKhoa');
-    const khoiFormTraCuu = document.getElementById('khoiFormTraCuu');
-    const khoiKetQua = document.getElementById('khoiKetQua');
-
-    // Xác nhận nhập học
-    const khoiXacNhanNhapHoc = document.getElementById('khoiXacNhanNhapHoc');
-    const mocXacNhanNhapHoc = document.getElementById('mocXacNhanNhapHoc');
-    const daXacNhanBox = document.getElementById('daXacNhanBox');
-    const hetHanXacNhanBox = document.getElementById('hetHanXacNhanBox');
-    const thongBaoXacNhanThanhCong = document.getElementById('thongBaoXacNhanThanhCong');
-
-    inputSoBaoDanh.addEventListener('input', () => {
-      loiSoBaoDanh.classList.toggle('hidden', inputSoBaoDanh.value.trim() !== '');
-      loiSoBaoDanh.textContent = 'Vui lòng nhập số báo danh.';
-    });
-    inputNgaySinh.addEventListener('input', () => {
-      loiNgaySinh.classList.toggle('hidden', inputNgaySinh.value !== '');
-      loiNgaySinh.textContent = 'Vui lòng nhập ngày sinh để xác thực.';
-    });
-
-    function hienThiKetQua(sbd, thiSinh) {
-      sbdHienTai = sbd;
-
-      document.getElementById('ketQuaHoTen').textContent = thiSinh.hoTen;
-      document.getElementById('ketQuaSoBaoDanh').textContent = sbd;
-
-      const tbody = document.getElementById('ketQuaBangDiem');
-      tbody.innerHTML = '';
-      Object.entries(thiSinh.diem).forEach(([mon, diem]) => {
-        const tr = document.createElement('tr');
-        tr.className = 'border-b border-gray-100 last:border-b-0';
-        tr.innerHTML = `<td class="px-3 py-2">${mon}</td><td class="px-3 py-2">${diem}</td>`;
-        tbody.appendChild(tr);
-      });
-
-      const nhan = document.getElementById('nhanTrangThai');
-      const khoiTruong = document.getElementById('ketQuaTruongTrungTuyen');
-
-      // Ẩn các khối liên quan tới xác nhận nhập học mỗi lần tra cứu mới
-      khoiXacNhanNhapHoc.classList.add('hidden');
-      thongBaoXacNhanThanhCong.classList.add('hidden');
-      daXacNhanBox.classList.add('hidden');
-      hetHanXacNhanBox.classList.add('hidden');
-      mocXacNhanNhapHoc.classList.add('hidden');
-
-      if (thiSinh.trungTuyen) {
-        nhan.textContent = 'Trúng tuyển';
-        khoiTruong.classList.remove('hidden');
-        document.getElementById('ketQuaTenTruong').textContent = thiSinh.truong;
-        document.getElementById('ketQuaNguyenVong').textContent = thiSinh.nguyenVong;
-
-        // Tiền điều kiện use case Xác nhận nhập học: còn hạn / chưa xác nhận nơi khác
-        if (thiSinh.daXacNhanNhapHoc) {
-          daXacNhanBox.classList.remove('hidden');
-        } else if (!thiSinh.conHanXacNhan) {
-          hetHanXacNhanBox.classList.remove('hidden');
-        } else {
-          mocXacNhanNhapHoc.classList.remove('hidden');
+        const noiDung = document.getElementById('modalNoiDung');
+        noiDung.innerHTML = '';
+        if (dong && dong.length) {
+            if (thanhCong) {
+                const p = document.createElement('p'); p.textContent = dong[0]; noiDung.appendChild(p);
+            } else {
+                const ul = document.createElement('ul');
+                ul.className = 'list-disc space-y-1 pl-5 text-left';
+                dong.forEach(m => { const li = document.createElement('li'); li.textContent = m; ul.appendChild(li); });
+                noiDung.appendChild(ul);
+            }
         }
-      } else {
-        nhan.textContent = 'Không trúng tuyển';
-        khoiTruong.classList.add('hidden');
-      }
+        focusTruoc = document.activeElement;
+        modal.classList.remove('hidden');
+        btnDong.focus();
+    };
 
-      khoiKetQua.classList.remove('hidden');
-      thongBaoKhongKhop.classList.add('hidden');
+    function dongModal() {
+        modal.classList.add('hidden');
+        if (focusTruoc && focusTruoc.focus) focusTruoc.focus();
     }
 
-    document.getElementById('formTraCuu').addEventListener('submit', function (e) {
-      e.preventDefault();
+    btnDong.addEventListener('click', dongModal);
+    modal.addEventListener('click', e => { if (e.target === modal) dongModal(); });   // bấm ra ngoài để đóng
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && !modal.classList.contains('hidden')) dongModal(); });
 
-      const sbd = inputSoBaoDanh.value.trim().toUpperCase();
-      const ngaySinh = inputNgaySinh.value;
-
-      let thieuThongTin = false;
-      if (sbd === '') {
-        loiSoBaoDanh.textContent = 'Vui lòng nhập số báo danh.';
-        loiSoBaoDanh.classList.remove('hidden');
-        thieuThongTin = true;
-      }
-      if (ngaySinh === '') {
-        loiNgaySinh.textContent = 'Vui lòng nhập ngày sinh để xác thực.';
-        loiNgaySinh.classList.remove('hidden');
-        thieuThongTin = true;
-      }
-      if (thieuThongTin) return;
-
-      khoiKetQua.classList.add('hidden');
-
-      const thiSinh = DU_LIEU_MAU[sbd];
-      const hopLe = thiSinh && thiSinh.ngaySinh === ngaySinh;
-
-      if (hopLe) {
-        soLanSai = 0;
-        hienThiKetQua(sbd, thiSinh);
-      } else {
-        // Alternative flow 4.1: thông tin không khớp
-        soLanSai++;
-        const conLai = SO_LAN_TOI_DA - soLanSai;
-        soLanConLaiEl.textContent = Math.max(conLai, 0);
-        thongBaoKhongKhop.classList.remove('hidden');
-
-        // Exception flow 4.2: sai quá số lần quy định -> khóa chức năng
-        if (soLanSai >= SO_LAN_TOI_DA) {
-          khoiFormTraCuu.classList.add('hidden');
-          khoiBiKhoa.classList.remove('hidden');
-        }
-      }
-    });
-
-    // ================================================================
-    // Use case: Xác nhận nhập học
-    // ================================================================
-
-    document.getElementById('btnMoXacNhan').addEventListener('click', function () {
-      const thiSinh = DU_LIEU_MAU[sbdHienTai];
-      if (!thiSinh) return;
-
-      document.getElementById('xnTenTruong').textContent = thiSinh.truong;
-      document.getElementById('xnNguyenVong').textContent = thiSinh.nguyenVong;
-
-      const ct = thiSinh.chiTietTruong || {};
-      document.getElementById('ctDiaChi').textContent = ct.diaChi || '';
-      document.getElementById('ctChuongTrinh').textContent = ct.chuongTrinhDaoTao || '';
-      document.getElementById('ctHocPhi').textContent = ct.hocPhi || '';
-
-      document.getElementById('khoiChiTietTruong').classList.add('hidden');
-      document.getElementById('loiXacNhanNhapHoc').classList.add('hidden');
-
-      khoiXacNhanNhapHoc.classList.remove('hidden');
-      khoiXacNhanNhapHoc.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
-
-    // Alternative flow 3.1: Xem chi tiết trường trước khi xác nhận
-    document.getElementById('btnXemChiTietTruong').addEventListener('click', function () {
-      document.getElementById('khoiChiTietTruong').classList.toggle('hidden');
-    });
-
-    // 9.1 (tương tự flow Hủy trong các use case khác của hệ thống): Hủy xác nhận, quay lại kết quả tra cứu
-    document.getElementById('btnHuyXacNhan').addEventListener('click', function () {
-      khoiXacNhanNhapHoc.classList.add('hidden');
-    });
-
-    // Basic flow bước 3-5: Xác nhận nhập học
-    document.getElementById('btnXacNhanNhapHoc').addEventListener('click', function () {
-      const thiSinh = DU_LIEU_MAU[sbdHienTai];
-      if (!thiSinh) return;
-
-      // Mô phỏng Exception flow 5.1: gõ "loi" vào Số báo danh trước khi tra cứu để giả lập lỗi hệ thống khi lưu
-      const gioLap5_1 = sbdHienTai && sbdHienTai.includes('LOI');
-
-      if (gioLap5_1) {
-        document.getElementById('loiXacNhanNhapHoc').classList.remove('hidden');
-        return;
-      }
-
-      // Basic flow bước 4-5: Kiểm tra thông tin, cập nhật trạng thái nhập học
-      thiSinh.daXacNhanNhapHoc = true;
-
-      khoiXacNhanNhapHoc.classList.add('hidden');
-      mocXacNhanNhapHoc.classList.add('hidden');
-      daXacNhanBox.classList.remove('hidden');
-      thongBaoXacNhanThanhCong.classList.remove('hidden');
-      thongBaoXacNhanThanhCong.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
-  </script>
+    if (!modal.classList.contains('hidden')) btnDong.focus();
+})();
+</script>
 
 </body>
 </html>

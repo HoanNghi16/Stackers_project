@@ -197,12 +197,6 @@ renderSidebar();
 
 <main class="pl-72 pt-20">
     <div class="mx-auto max-w-7xl px-6 py-8">
-
-        <!-- Breadcrumb + tiêu đề -->
-        <p class="mb-2 text-sm text-slate-500">
-            Sở GD&amp;ĐT &nbsp;/&nbsp; Điểm số &nbsp;/&nbsp;
-            <span class="text-slate-800">Thiết lập công thức tính điểm</span>
-        </p>
         <div class="mb-6 flex flex-wrap items-start justify-between gap-3">
             <div>
                 <h1 class="text-2xl font-bold">Thiết lập công thức tính điểm</h1>
