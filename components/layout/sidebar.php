@@ -2,6 +2,13 @@
 function renderSidebar() {
     $vaitro = $_SESSION['vaitro'] ?? '';
 
+    $normalizePath = static function ($path) {
+        $path = parse_url($path ?? '', PHP_URL_PATH) ?: '/';
+        $path = '/' . trim(preg_replace('#/+#', '/', $path), '/');
+        return $path === '/' ? '/' : $path;
+    };
+    $currentPath = $normalizePath($_SERVER['REQUEST_URI'] ?? '');
+
     $chucNangTheoVaiTro = [
         'THCS' => [
             ['ten' => 'Quản lý hồ sơ thí sinh', 'url' => '/stackers_project/pages/thcs/quan-ly-hs-thi-sinh'],
@@ -67,10 +74,12 @@ function renderSidebar() {
 
     <nav class="min-h-0 flex-1 space-y-1 overflow-y-auto">
         <?php foreach ($danhSachChucNang as $chucNang): ?>
+            <?php $isActive = $currentPath === $normalizePath($chucNang['url']); ?>
             <a href="<?= htmlspecialchars($chucNang['url'], ENT_QUOTES, 'UTF-8') ?>"
-               class="group flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium text-slate-600 transition duration-200 hover:bg-sky-50 hover:text-sky-700">
+               class="group flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition duration-200 <?= $isActive ? 'bg-sky-50 text-sky-700 font-semibold shadow-[inset_3px_0_#0284c7]' : 'text-slate-600 hover:bg-sky-50 hover:text-sky-700' ?>"
+               <?= $isActive ? 'aria-current="page"' : '' ?>>
 
-                <svg class="h-5 w-5 shrink-0 text-slate-400 transition-colors group-hover:text-sky-600"
+                <svg class="h-5 w-5 shrink-0 transition-colors <?= $isActive ? 'text-sky-600' : 'text-slate-400 group-hover:text-sky-600' ?>"
                      fill="none" stroke="currentColor"
                      stroke-width="2" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round"
